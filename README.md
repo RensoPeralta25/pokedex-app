@@ -3,6 +3,7 @@
 Aplicación Flutter. **KAN-7 / PKD-01** estableció la estructura por
 funcionalidades, la navegación inicial y los contratos entre módulos.
 **KAN-9 / PKD-03** añadió la consulta paginada del catálogo a PokéAPI.
+**KAN-11 / PKD-05** añadió la pantalla del catálogo y sus estados.
 
 ## Requisitos y ejecución
 
@@ -14,9 +15,55 @@ flutter pub get
 flutter run
 ```
 
-La app abre un catálogo de tres Pokémon de demostración. Se puede abrir su
-detalle y navegar entre Catálogo, Favoritos y Trivia. KAN-10 conectará la
-fuente remota de KAN-9 con la persistencia y el catálogo observable.
+La app abre el catálogo con Bulbasaur, Charmander y Squirtle como datos de
+demostración. Cada tarjeta abre el detalle del Pokémon. También puedes navegar
+a Favoritos y Trivia. KAN-10 conectará la fuente remota de KAN-9 con la
+persistencia y el catálogo observable.
+
+## KAN-11 / PKD-05 — Pantalla del catálogo
+
+La pantalla permite explorar Pokémon y abrir su detalle. Consume el
+`Stream<CatalogSnapshot>` del repositorio inyectado. Esto permite validar
+la interfaz con datos de prueba mientras avanza la integración con la base local.
+
+### Qué se implementó y por qué
+
+| Componente | Decisión |
+| --- | --- |
+| [`CatalogPage`](lib/features/catalog/presentation/catalog_page.dart) | Observa el repositorio y muestra carga, contenido, vacío o error. Conserva la navegación al detalle y usa `GridView.builder` para construir las tarjetas conforme aparecen en pantalla. |
+| [`PokemonCatalogCard`](lib/features/catalog/presentation/pokemon_catalog_card.dart) | Presenta nombre, número nacional con ceros iniciales, tipos e imagen. Si falta el arte oficial o falla su descarga, prueba el sprite disponible. Si tampoco hay sprite, muestra un ícono y conserva visible el resto de la tarjeta. |
+| [`DemoCatalogRepository`](lib/features/catalog/data/demo_catalog_repository.dart) | Provee tres registros con número, tipos y referencias a imágenes de PokéAPI. Los datos de las tarjetas están disponibles sin conexión. Las imágenes se cargan cuando sus enlaces están disponibles. |
+
+La cuadrícula usa entre una y cuatro columnas, según el ancho disponible y la
+escala del texto. Esto permite usar el espacio de pantallas anchas y mantener
+legibles las tarjetas en pantallas pequeñas o con texto ampliado.
+
+### Estados de pantalla
+
+| Estado | Qué se ve |
+| --- | --- |
+| Carga | Un indicador mientras llega la primera vista del repositorio o está en curso un reintento. |
+| Contenido | Las tarjetas de los Pokémon disponibles. |
+| Vacío | El mensaje «No hay Pokémon disponibles». |
+| Error | Un mensaje y el botón **Reintentar**. El botón llama a `refresh()` y, si termina correctamente, vuelve a suscribirse para recuperar incluso un flujo que se cerró. |
+
+### Cómo revisar el ticket
+
+1. Ejecuta `flutter pub get` y `flutter run` con un emulador o dispositivo.
+2. En **Catálogo**, comprueba que Bulbasaur (`#001`), Charmander (`#004`) y
+   Squirtle (`#007`) muestren sus nombres, tipos y arte.
+3. Abre una tarjeta y vuelve con el botón de retroceso. Prueba un ancho
+   distinto o aumenta el tamaño del texto para comprobar la cuadrícula.
+4. Ejecuta las pruebas de pantalla para reproducir carga, vacío, error,
+   recuperación mediante **Reintentar** y cambio de ancho.
+
+```sh
+flutter test test/catalog_page_test.dart
+```
+
+La validación del ticket pasó con `flutter analyze` y las 13 pruebas del proyecto.
+La persistencia y la carga de páginas remotas desde la pantalla corresponden
+a los tickets de integración y paginación.
 
 ## KAN-9 / PKD-03 — Catálogo remoto con GraphQL
 
