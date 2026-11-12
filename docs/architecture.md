@@ -107,3 +107,26 @@ se puede revisar comprobando que sus imports solo apuntan a Dart y a otros archi
 - Las pruebas Flutter están escritas, pero el ejecutor no pudo iniciarse porque
   este entorno impide abrir su socket local. No se considera verificada la
   navegación en ejecución hasta correr `flutter test` fuera de esta restricción.
+
+## KAN-9 / PKD-03 — Fuente remota del catálogo
+
+`PokeApiCatalogSource.fetchPage()` consulta PokéAPI GraphQL
+(`https://graphql.pokeapi.co/v1beta2`). El DTO valida y convierte cada registro
+en un `PokemonSummary`. El ID del recurso identifica al Pokémon y el ID de su
+especie se conserva aparte como número nacional. La consulta pide la variedad
+por defecto de cada especie. Obtiene los tipos en orden de ranura y las
+referencias al arte oficial y al sprite frontal cuando están disponibles.
+
+La consulta ordena por número nacional e ID para que los desplazamientos sean
+estables. Comienza en `offset = 0`, con 20 Pokémon por página de forma
+predeterminada. Pide un registro adicional para detectar si existe otra página.
+Entrega como máximo `pageSize` registros y un `nextOffset` nulo al llegar al
+final. El consumidor pasa ese desplazamiento a la próxima llamada y solo
+lo avanza después de guardar la página correctamente.
+
+El cliente limita a 15 segundos la conexión, la respuesta y la lectura del
+cuerpo en conjunto. Reporta los errores HTTP, de tiempo de espera y de formato.
+La fuente rechaza respuestas con errores GraphQL, incluso si incluyen datos
+parciales. KAN-10 conectará esta fuente con la persistencia y el repositorio
+observable. La fuente remota se puede comprobar con respuestas de prueba
+inyectadas mediante el constructor.
