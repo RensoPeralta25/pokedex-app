@@ -4,6 +4,7 @@ Aplicación Flutter. **KAN-7 / PKD-01** estableció la estructura por
 funcionalidades, la navegación inicial y los contratos entre módulos.
 **KAN-9 / PKD-03** añadió la consulta paginada del catálogo a PokéAPI.
 **KAN-11 / PKD-05** añadió la pantalla del catálogo y sus estados.
+**KAN-12 / PKD-06** añadió el arranque sin bloqueos y la carga progresiva.
 
 ## Requisitos y ejecución
 
@@ -20,6 +21,35 @@ demostración. Cada tarjeta abre el detalle del Pokémon. También puedes navega
 a Favoritos y Trivia. KAN-10 conectará la fuente remota de KAN-9 con la
 persistencia y el catálogo observable.
 
+## KAN-12 / PKD-06 — Arranque y carga progresiva
+
+La pantalla se suscribe a `watchCatalog()` al abrirse. Al recibir la primera
+vista del repositorio, espera a que Flutter termine el cuadro actual y llama a
+`refresh()` en segundo plano. Si el catálogo ya contiene datos, las tarjetas
+permanecen visibles durante la actualización. Las pestañas siguen disponibles.
+
+| Decisión | Motivo |
+| --- | --- |
+| Mostrar **Cargar más** cuando `CatalogSnapshot.hasMore` es verdadero | El repositorio indica si quedan datos. El botón permite pedir la siguiente página de forma explícita. |
+| Deshabilitar la carga mientras hay una operación en curso | Evita solicitudes simultáneas por toques repetidos y evita paginar durante una actualización inicial. |
+| Mostrar el fallo junto a **Reintentar página** | Se conserva la cuadrícula y se puede reintentar sin perder los elementos visibles. |
+| Leer los nuevos elementos desde `watchCatalog()` | `loadNextPage()` solo indica si la operación terminó. La pantalla recibe el catálogo actualizado cuando lo publica el repositorio. |
+
+### Cómo probarlo
+
+1. Ejecuta `flutter run` y abre **Catálogo**. Verás tres Pokémon de prueba.
+2. Pulsa **Cargar más**. Mientras aparece el indicador, puedes navegar a otra
+   pestaña. Al regresar, podrás ver Pikachu, Jigglypuff y Meowth al desplazarte
+   por la cuadrícula. El botón desaparece al terminar la segunda página.
+3. Ejecuta `flutter test test/catalog_page_test.dart` para comprobar la
+   navegación durante una actualización pendiente, el bloqueo de solicitudes
+   repetidas y la recuperación de un error de página sin perder tarjetas.
+
+El repositorio de demostración simula dos páginas en memoria. KAN-10
+conectará la consulta GraphQL con la base local observable. La validación de
+PA-01 con una instalación limpia, datos reales e indicador de sincronización
+queda para la integración del avance.
+
 ## KAN-11 / PKD-05 — Pantalla del catálogo
 
 La pantalla permite explorar Pokémon y abrir su detalle. Consume el
@@ -32,7 +62,7 @@ la interfaz con datos de prueba mientras avanza la integración con la base loca
 | --- | --- |
 | [`CatalogPage`](lib/features/catalog/presentation/catalog_page.dart) | Observa el repositorio y muestra carga, contenido, vacío o error. Conserva la navegación al detalle y usa `GridView.builder` para construir las tarjetas conforme aparecen en pantalla. |
 | [`PokemonCatalogCard`](lib/features/catalog/presentation/pokemon_catalog_card.dart) | Presenta nombre, número nacional con ceros iniciales, tipos e imagen. Si falta el arte oficial o falla su descarga, prueba el sprite disponible. Si tampoco hay sprite, muestra un ícono y conserva visible el resto de la tarjeta. |
-| [`DemoCatalogRepository`](lib/features/catalog/data/demo_catalog_repository.dart) | Provee tres registros con número, tipos y referencias a imágenes de PokéAPI. Los datos de las tarjetas están disponibles sin conexión. Las imágenes se cargan cuando sus enlaces están disponibles. |
+| [`DemoCatalogRepository`](lib/features/catalog/data/demo_catalog_repository.dart) | Provee tres registros iniciales con número, tipos y referencias a imágenes de PokéAPI. Los datos de las tarjetas están disponibles sin conexión. Las imágenes se cargan cuando sus enlaces están disponibles. |
 
 La cuadrícula usa entre una y cuatro columnas, según el ancho disponible y la
 escala del texto. Esto permite usar el espacio de pantallas anchas y mantener
