@@ -56,16 +56,17 @@ que mantenga recursos añadirá su limpieza allí, no en el dominio.
 
 ## Implementaciones de demostración
 
-- `DemoCatalogRepository`: tres Pokémon estáticos, sin más páginas. Cada lectura
-  entrega la misma vista; refresh y loadNextPage no hacen nada.
+- `DemoCatalogRepository`: tres Pokémon iniciales y una segunda página simulada
+  en memoria. `watchCatalog()` emite la vista actual y la actualización cuando
+  termina la carga de la segunda página.
 - `DemoFavoritesRepository`: doble en memoria para verificar el contrato observable.
   No ofrece persistencia ni botones funcionales de favoritos en la aplicación.
   Expone dispose para liberar su controlador en las pruebas.
 - `DemoConnectivityService`: emite unknown; no consulta el dispositivo.
 
-Los Streams estáticos de catálogo y conectividad terminan después de su único
-valor, porque estos dobles no generan cambios. Los adaptadores reales deberán
-mantener las suscripciones para publicar cambios durante su ciclo de vida.
+El flujo de demostración de conectividad termina después de emitir `unknown`.
+Los adaptadores reales mantendrán sus suscripciones para publicar cambios
+durante su ciclo de vida.
 
 ## Colaboración y criterios de aceptación
 

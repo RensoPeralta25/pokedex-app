@@ -17,14 +17,16 @@ class CatalogPage extends StatefulWidget {
 
 class _CatalogPageState extends State<CatalogPage> {
   late Stream<CatalogSnapshot> _catalog;
-  bool _retrying = false;
+  bool _refreshing = false;
+  bool _loadingNextPage = false;
+  bool _nextPageFailed = false;
   bool _refreshFailed = false;
   int _repositoryVersion = 0;
 
   @override
   void initState() {
     super.initState();
-    _catalog = widget.repository.watchCatalog();
+    _catalog = _watchCatalogAndRefresh();
   }
 
   @override
@@ -32,36 +34,75 @@ class _CatalogPageState extends State<CatalogPage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.repository != widget.repository) {
       _repositoryVersion++;
-      _catalog = widget.repository.watchCatalog();
-      _retrying = false;
+      _catalog = _watchCatalogAndRefresh();
+      _refreshing = false;
+      _loadingNextPage = false;
+      _nextPageFailed = false;
       _refreshFailed = false;
     }
   }
 
-  Future<void> _retry() async {
-    if (_retrying) return;
+  Stream<CatalogSnapshot> _watchCatalogAndRefresh() {
+    final version = _repositoryVersion;
+    var refreshScheduled = false;
+    return widget.repository.watchCatalog().map((snapshot) {
+      if (!refreshScheduled) {
+        refreshScheduled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && version == _repositoryVersion) {
+            _refresh();
+          }
+        });
+      }
+      return snapshot;
+    });
+  }
+
+  Future<void> _refresh({bool resubscribe = false}) async {
+    if (_refreshing || _loadingNextPage) return;
     final repository = widget.repository;
     final version = _repositoryVersion;
     setState(() {
-      _retrying = true;
+      _refreshing = true;
       _refreshFailed = false;
     });
 
     try {
       await repository.refresh();
       if (!mounted || version != _repositoryVersion) return;
-      // A new subscription also recovers when the failing stream ended.
-      final catalog = repository.watchCatalog();
       setState(() {
-        _catalog = catalog;
-        _retrying = false;
+        // Recover even if the stream that reported a read error has closed.
+        if (resubscribe) _catalog = repository.watchCatalog();
+        _refreshing = false;
+        _nextPageFailed = false;
       });
     } catch (_) {
       if (!mounted || version != _repositoryVersion) return;
       setState(() {
         _refreshFailed = true;
-        _retrying = false;
+        _refreshing = false;
       });
+    }
+  }
+
+  Future<void> _loadNextPage() async {
+    if (_loadingNextPage || _refreshing) return;
+    final version = _repositoryVersion;
+    setState(() {
+      _loadingNextPage = true;
+      _nextPageFailed = false;
+    });
+
+    try {
+      await widget.repository.loadNextPage();
+    } catch (_) {
+      if (mounted && version == _repositoryVersion) {
+        _nextPageFailed = true;
+      }
+    } finally {
+      if (mounted && version == _repositoryVersion) {
+        setState(() => _loadingNextPage = false);
+      }
     }
   }
 
@@ -83,8 +124,10 @@ class _CatalogPageState extends State<CatalogPage> {
         key: ObjectKey(_catalog),
         stream: _catalog,
         builder: (context, snapshot) {
-          if (_retrying ||
-              snapshot.connectionState == ConnectionState.waiting) {
+          final items = snapshot.data?.items ?? const <PokemonSummary>[];
+          if (items.isEmpty &&
+              (_refreshing ||
+                  snapshot.connectionState == ConnectionState.waiting)) {
             return const Center(
               child: CircularProgressIndicator(
                 semanticsLabel: 'Cargando catálogo',
@@ -92,19 +135,18 @@ class _CatalogPageState extends State<CatalogPage> {
             );
           }
 
-          if (_refreshFailed || snapshot.hasError) {
+          if (items.isEmpty && (_refreshFailed || snapshot.hasError)) {
             return _CatalogMessage(
               icon: Icons.cloud_off_outlined,
               message: 'No se pudo cargar el catálogo.',
               action: FilledButton.icon(
-                onPressed: _retry,
+                onPressed: () => _refresh(resubscribe: true),
                 icon: const Icon(Icons.refresh),
                 label: const Text('Reintentar'),
               ),
             );
           }
 
-          final items = snapshot.data?.items ?? const <PokemonSummary>[];
           if (items.isEmpty) {
             return const _CatalogMessage(
               icon: Icons.catching_pokemon,
@@ -121,7 +163,7 @@ class _CatalogPageState extends State<CatalogPage> {
                       .floor()
                       .clamp(1, 4);
 
-              return GridView.builder(
+              final grid = GridView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
                 itemCount: items.length,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -138,6 +180,42 @@ class _CatalogPageState extends State<CatalogPage> {
                     onTap: () => _openDetail(pokemon),
                   );
                 },
+              );
+
+              return Column(
+                children: [
+                  Expanded(child: grid),
+                  if (_refreshing)
+                    const LinearProgressIndicator(
+                      semanticsLabel: 'Actualizando catálogo',
+                    ),
+                  if (_refreshFailed)
+                    _CatalogFooter(
+                      message: 'No se pudo actualizar el catálogo.',
+                      action: TextButton(
+                        onPressed: _loadingNextPage ? null : _refresh,
+                        child: const Text('Reintentar actualización'),
+                      ),
+                    ),
+                  if (_loadingNextPage)
+                    const _CatalogFooter(
+                      action: CircularProgressIndicator(
+                        semanticsLabel: 'Cargando más Pokémon',
+                      ),
+                    )
+                  else if (snapshot.data?.hasMore ?? false)
+                    _CatalogFooter(
+                      message: _nextPageFailed
+                          ? 'No se pudo cargar la siguiente página.'
+                          : null,
+                      action: FilledButton.tonal(
+                        onPressed: _refreshing ? null : _loadNextPage,
+                        child: Text(
+                          _nextPageFailed ? 'Reintentar página' : 'Cargar más',
+                        ),
+                      ),
+                    ),
+                ],
               );
             },
           );
@@ -174,6 +252,28 @@ class _CatalogMessage extends StatelessWidget {
           ],
         ],
       ),
+    ),
+  );
+}
+
+class _CatalogFooter extends StatelessWidget {
+  const _CatalogFooter({required this.action, this.message});
+
+  final Widget action;
+  final String? message;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    child: Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        if (message case final text?) Text(text, textAlign: TextAlign.center),
+        action,
+      ],
     ),
   );
 }

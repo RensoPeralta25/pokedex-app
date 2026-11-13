@@ -1,10 +1,14 @@
 import 'dart:async';
 
+import 'package:dart_final_project/app/app_dependencies.dart';
+import 'package:dart_final_project/app/pokedex_app.dart';
+import 'package:dart_final_project/core/data/demo_connectivity_service.dart';
 import 'package:dart_final_project/core/domain/pokemon_id.dart';
 import 'package:dart_final_project/features/catalog/domain/catalog_repository.dart';
 import 'package:dart_final_project/features/catalog/domain/catalog_snapshot.dart';
 import 'package:dart_final_project/features/catalog/domain/pokemon_summary.dart';
 import 'package:dart_final_project/features/catalog/presentation/catalog_page.dart';
+import 'package:dart_final_project/features/favorites/data/demo_favorites_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -98,6 +102,98 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets('permite navegar durante la actualización inicial', (
+    tester,
+  ) async {
+    final pending = Completer<void>();
+    var refreshes = 0;
+    final repository = _CatalogRepository(
+      watch: () => Stream.value(CatalogSnapshot(items: [], hasMore: false)),
+      refreshCatalog: () {
+        refreshes++;
+        return pending.future;
+      },
+    );
+    final favorites = DemoFavoritesRepository();
+    addTearDown(favorites.dispose);
+    await tester.pumpWidget(
+      PokedexApp(
+        dependencies: AppDependencies(
+          catalog: repository,
+          favorites: favorites,
+          connectivity: DemoConnectivityService(),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(refreshes, 1);
+    await tester.pump();
+    expect(find.bySemanticsLabel('Cargando catálogo'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.quiz_outlined));
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.text('Trivia Pokémon'), findsOneWidget);
+    expect(pending.isCompleted, isFalse);
+    pending.complete();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('una página fallida conserva tarjetas y permite reintentar', (
+    tester,
+  ) async {
+    final snapshots = StreamController<CatalogSnapshot>();
+    addTearDown(snapshots.close);
+    var requests = 0;
+    var pending = Completer<void>();
+    final repository = _CatalogRepository(
+      watch: () => snapshots.stream,
+      loadPage: () {
+        requests++;
+        return pending.future;
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: CatalogPage(repository: repository)),
+    );
+    snapshots.add(CatalogSnapshot(items: _snapshot().items, hasMore: true));
+    await tester.pumpAndSettle();
+
+    final load = find.text('Cargar más');
+    await tester.tap(load);
+    await tester.tap(load); // Segundo toque antes de reconstruir el botón.
+    await tester.pump();
+    expect(requests, 1);
+    expect(find.text('Venusaur'), findsOneWidget);
+    expect(find.bySemanticsLabel('Cargando más Pokémon'), findsOneWidget);
+
+    pending.completeError(StateError('Fallo de página'));
+    await tester.pumpAndSettle();
+    expect(find.text('Venusaur'), findsOneWidget);
+    expect(find.text('No se pudo cargar la siguiente página.'), findsOneWidget);
+
+    pending = Completer<void>();
+    await tester.tap(find.text('Reintentar página'));
+    await tester.pump();
+    expect(requests, 2);
+    pending.complete();
+    await tester.pump();
+    // El Future indica que la operación terminó. Solo el stream agrega datos.
+    expect(find.text('Pikachu'), findsNothing);
+
+    snapshots.add(
+      CatalogSnapshot(
+        items: [
+          ..._snapshot().items,
+          PokemonSummary(id: PokemonId(25), name: 'Pikachu'),
+        ],
+        hasMore: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Pikachu'), findsOneWidget);
+    expect(find.text('Venusaur'), findsOneWidget);
+    expect(load, findsNothing);
+  });
 }
 
 CatalogSnapshot _snapshot() => CatalogSnapshot(
@@ -113,10 +209,11 @@ CatalogSnapshot _snapshot() => CatalogSnapshot(
 );
 
 final class _CatalogRepository implements CatalogRepository {
-  _CatalogRepository({required this.watch, this.refreshCatalog});
+  _CatalogRepository({required this.watch, this.refreshCatalog, this.loadPage});
 
   final Stream<CatalogSnapshot> Function() watch;
   final Future<void> Function()? refreshCatalog;
+  final Future<void> Function()? loadPage;
 
   @override
   Stream<CatalogSnapshot> watchCatalog() => watch();
@@ -127,5 +224,7 @@ final class _CatalogRepository implements CatalogRepository {
   }
 
   @override
-  Future<void> loadNextPage() async {}
+  Future<void> loadNextPage() async {
+    await loadPage?.call();
+  }
 }
