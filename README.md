@@ -21,6 +21,40 @@ demostración. Cada tarjeta abre el detalle del Pokémon. También puedes navega
 a Favoritos y Trivia. KAN-10 conectará la fuente remota de KAN-9 con la
 persistencia y el catálogo observable.
 
+## KAN-10 / PKD-04 — Integración del catálogo remoto con la lectura local
+
+[`ObservableCatalogRepository`](lib/features/catalog/data/observable_catalog_repository.dart)
+coordina la descarga desde PokéAPI y el guardado. La pantalla sigue usando
+`CatalogRepository`. En la integración, `watchCatalog()` devuelve el flujo de
+la fuente local y la consulta remota solo se ejecuta al actualizar o paginar.
+
+- **Actualización inicial.** `refresh()` descarga desde el desplazamiento 0,
+  conserva los registros de otras páginas y reinicia el desplazamiento para
+  volver a recorrer las páginas. Al repetir una página, el guardado actualiza
+  por `PokemonId`.
+- **Paginación.** `loadNextPage()` usa el desplazamiento guardado. Si es nulo,
+  termina sin consultar. Una cola serializa la actualización y las páginas
+  para que cada solicitud lea el desplazamiento que dejó la anterior.
+- **Escritura.** El [contrato local](lib/features/catalog/data/local/catalog_local_store.dart)
+  entrega los Pokémon, el desplazamiento y la fecha UTC a una sola operación.
+  El adaptador de KAN-8 debe confirmarlos en una transacción y publicar la
+  vista local solo después de confirmarla.
+- **Fallos.** Si GraphQL falla o devuelve datos inválidos, el repositorio
+  evita la escritura. Si falla el guardado, el contrato exige conservar los
+  registros, la fecha y el desplazamiento anteriores. El error llega a la
+  pantalla y la cola permite reintentar.
+
+```sh
+flutter test test/observable_catalog_repository_test.dart
+```
+
+Las pruebas usan respuestas GraphQL controladas y una fuente local en memoria.
+Verifican lectura observable, actualización sin duplicados, conservación de
+datos ante fallos y paginación después de guardar. Queda pendiente conectar el
+adaptador de base de datos de KAN-8 al arranque de la app y comprobar la
+persistencia tras reiniciar. Hasta entonces, `flutter run` usa el catálogo de
+demostración.
+
 ## KAN-12 / PKD-06 — Arranque y carga progresiva
 
 La pantalla se suscribe a `watchCatalog()` al abrirse. Al recibir la primera
