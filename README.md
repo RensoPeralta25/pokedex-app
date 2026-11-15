@@ -8,6 +8,7 @@ funcionalidades, la navegación inicial y los contratos entre módulos.
 **KAN-10 / PKD-04** conectó GraphQL con la lectura local observable.
 **KAN-8 / PKD-02** añadió la base SQLite (Drift) como fuente de verdad.
 **KAN-13 / PKD-07** añadió el indicador global de conectividad.
+**KAN-14 / PKD-08** añadió el caché de imágenes para uso sin conexión.
 
 ## Requisitos y ejecución
 
@@ -32,6 +33,30 @@ Al abrirse, la app muestra lo que haya en la base local y, en segundo plano,
 descarga la primera página del catálogo desde PokéAPI. Cada tarjeta abre el
 detalle del Pokémon. También puedes navegar a Favoritos y Trivia. Las pruebas
 de widgets siguen usando `AppDependencies.demo()`, con datos en memoria.
+
+## KAN-14 / PKD-08 — Imágenes disponibles sin conexión (PS-08)
+
+Las tarjetas del catálogo usan
+[`cached_network_image`](https://pub.dev/packages/cached_network_image) con un
+caché en disco propio, [`PokedexImageCache`](lib/core/data/pokedex_image_cache.dart).
+
+| Decisión | Valor |
+|---|---|
+| Qué se guarda | El arte oficial de cada Pokémon guardado (o su sprite si no tiene arte) |
+| Cuándo | Al guardar cada página del catálogo, en segundo plano ([`CacheImagePrefetcher`](lib/features/catalog/data/catalog_image_prefetcher.dart), hasta 4 descargas a la vez); también al mostrarse una imagen que aún no estaba |
+| Dónde | Carpeta de caché de la app (`pokedex_images`), con el índice SQLite de `flutter_cache_manager` |
+| Límite | 1 200 imágenes (el catálogo completo ronda 1 025 Pokémon) |
+| Limpieza | Al pasar el límite se borran las menos usadas recientemente; las que no se usan en 365 días caducan |
+| Respaldo | Arte oficial → sprite → icono de Pokébola, también sin conexión (OF-08) |
+| Memoria | Cada imagen se decodifica al ancho real de la tarjeta (`memCacheWidth`, RNF-REN-04) |
+
+La precarga no forma parte de la transacción ni del estado «Sincronizando»: si
+falla (por ejemplo, sin red), la sincronización termina igual. Al recuperar la
+conexión, el catálogo vuelve a intentar las imágenes que habían fallado.
+
+```sh
+flutter test test/catalog_image_prefetcher_test.dart test/catalog_page_test.dart
+```
 
 ## KAN-13 / PKD-07 — Gestión de conectividad e indicador global
 
