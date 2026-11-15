@@ -1,115 +1,206 @@
 # Pokédex — Proyecto final de Desarrollo de Aplicaciones Móviles
 
-Aplicación Flutter. **KAN-7 / PKD-01** estableció la estructura por
-funcionalidades, la navegación inicial y los contratos entre módulos.
-**KAN-9 / PKD-03** añadió la consulta paginada del catálogo a PokéAPI.
-**KAN-11 / PKD-05** añadió la pantalla del catálogo y sus estados.
-**KAN-12 / PKD-06** añadió el arranque sin bloqueos y la carga progresiva.
-**KAN-10 / PKD-04** conectó GraphQL con la lectura local observable.
-**KAN-8 / PKD-02** añadió la base SQLite (Drift) como fuente de verdad.
-**KAN-13 / PKD-07** añadió el indicador global de conectividad.
-**KAN-14 / PKD-08** añadió el caché de imágenes para uso sin conexión.
+Pokédex móvil en Flutter que consume la API GraphQL de
+[PokéAPI](https://pokeapi.co) con una arquitectura **Offline-First +
+Online-Preferred**: la interfaz siempre se construye desde una base de datos
+local y, cuando el servicio está disponible, la app descarga información
+actualizada, la guarda en esa base y la interfaz se entera del cambio.
 
-## Requisitos y ejecución
+Estado del **avance** (≈ 40 % del proyecto): catálogo paginado desde PokéAPI,
+persistencia local con SQLite, funcionamiento sin conexión tras reiniciar,
+indicador global de conectividad e imágenes disponibles sin conexión. El
+detalle completo, favoritos en la interfaz, búsqueda, filtros y trivia
+corresponden a la entrega final.
 
-Usar una instalación de Flutter que incluya Dart compatible con `^3.13.5`,
-según `pubspec.yaml`, y un emulador o dispositivo Android/iOS configurado.
+## Contenido
+
+1. [Requisitos e instalación](#requisitos-e-instalación)
+2. [Tecnologías y justificación](#tecnologías-y-justificación)
+3. [Arquitectura](#arquitectura)
+4. [Estructura del proyecto](#estructura-del-proyecto)
+5. [Estrategia Offline-First](#estrategia-offline-first)
+6. [GraphQL y paginación](#graphql-y-paginación)
+7. [Sincronización](#sincronización)
+8. [Persistencia local](#persistencia-local)
+9. [Gestión de conectividad](#gestión-de-conectividad)
+10. [Imágenes sin conexión](#imágenes-sin-conexión)
+11. [Funcionalidades adicionales implementadas](#funcionalidades-adicionales-implementadas)
+12. [Pruebas y verificación](#pruebas-y-verificación)
+13. [Limitaciones conocidas](#limitaciones-conocidas)
+14. [Decisiones de arquitectura (ADR)](#decisiones-de-arquitectura-adr)
+15. [Uso de herramientas de IA](#uso-de-herramientas-de-ia)
+16. [Historial por ticket](#historial-por-ticket)
+
+## Requisitos e instalación
+
+| Requisito | Versión |
+|---|---|
+| Flutter (stable) | 3.47 o superior, con Dart compatible con `^3.13.5` |
+| Android SDK | API 24 o superior en el dispositivo |
+| Android NDK | **28.2.13676358** (Drift compila SQLite nativo con el NDK) |
+| Dispositivo | Teléfono Android con depuración USB o emulador |
 
 ```sh
 flutter pub get
 flutter run
 ```
 
-Para compilar en Android hace falta el **NDK 28.2.13676358** (la versión que
-pide Flutter). Drift incluye SQLite nativo y se compila con el NDK. Si Gradle
-no logra instalarlo solo, se instala desde Android Studio (SDK Manager → SDK
-Tools → NDK) o con `android sdk install ndk/28.2.13676358`.
+- Si Gradle no instala el NDK solo: Android Studio → SDK Manager → SDK Tools →
+  NDK, o `android sdk install ndk/28.2.13676358`.
+- El código generado de Drift (`*.g.dart`) está versionado: no hace falta
+  ejecutar `build_runner` para correr la app. Solo se regenera si cambian las
+  tablas (ver [Migraciones](#migraciones)).
+- APK de depuración: `flutter build apk --debug`. Para un teléfono con poco
+  espacio, `flutter build apk --release --split-per-abi --target-platform android-arm64`
+  genera uno de ~18 MB.
 
-El código generado de Drift (`*.g.dart`) está versionado, así que no hace falta
-ejecutar `build_runner` para correr la app. Solo hay que regenerarlo si se
-cambian las tablas (ver [KAN-8](#kan-8--pkd-02--base-local-con-drift)).
+## Tecnologías y justificación
 
-Al abrirse, la app muestra lo que haya en la base local y, en segundo plano,
-descarga la primera página del catálogo desde PokéAPI. Cada tarjeta abre el
-detalle del Pokémon. También puedes navegar a Favoritos y Trivia. Las pruebas
-de widgets siguen usando `AppDependencies.demo()`, con datos en memoria.
-
-## KAN-14 / PKD-08 — Imágenes disponibles sin conexión (PS-08)
-
-Las tarjetas del catálogo usan
-[`cached_network_image`](https://pub.dev/packages/cached_network_image) con un
-caché en disco propio, [`PokedexImageCache`](lib/core/data/pokedex_image_cache.dart).
-
-| Decisión | Valor |
-|---|---|
-| Qué se guarda | El arte oficial de cada Pokémon guardado (o su sprite si no tiene arte) |
-| Cuándo | Al guardar cada página del catálogo, en segundo plano ([`CacheImagePrefetcher`](lib/features/catalog/data/catalog_image_prefetcher.dart), hasta 4 descargas a la vez); también al mostrarse una imagen que aún no estaba |
-| Dónde | Carpeta de caché de la app (`pokedex_images`), con el índice SQLite de `flutter_cache_manager` |
-| Límite | 1 200 imágenes (el catálogo completo ronda 1 025 Pokémon) |
-| Limpieza | Al pasar el límite se borran las menos usadas recientemente; las que no se usan en 365 días caducan |
-| Respaldo | Arte oficial → sprite → icono de Pokébola, también sin conexión (OF-08) |
-| Memoria | Cada imagen se decodifica al ancho real de la tarjeta (`memCacheWidth`, RNF-REN-04) |
-
-La precarga no forma parte de la transacción ni del estado «Sincronizando»: si
-falla (por ejemplo, sin red), la sincronización termina igual. Al recuperar la
-conexión, el catálogo vuelve a intentar las imágenes que habían fallado.
-
-```sh
-flutter test test/catalog_image_prefetcher_test.dart test/catalog_page_test.dart
-```
-
-## KAN-13 / PKD-07 — Gestión de conectividad e indicador global
-
-Una barra fija arriba de todas las pantallas (catálogo, favoritos, trivia y
-detalle) informa la disponibilidad del servicio, la actividad de
-sincronización y la vigencia de los datos locales.
-
-| Estado | Cuándo | Indicador |
+| Dependencia | Para qué | Por qué |
 |---|---|---|
-| Verificando | Al iniciar, antes de la primera comprobación | «Verificando conexión…» |
-| En línea | PokéAPI respondió una consulta GraphQL | «En línea» |
-| Sincronizando | En línea y hay una descarga en curso | «Sincronizando…» con progreso |
-| Sin conexión | El dispositivo no tiene red o no resuelve el servidor | «Sin conexión» |
-| Servicio no disponible | Hay red, pero la API falla, tarda más de 5 s o devuelve errores | «Servicio no disponible» |
+| Flutter / Dart | Aplicación multiplataforma | Exigido por el enunciado |
+| `HttpClient` de `dart:io` | Cliente GraphQL (POST JSON) | Una sola consulta con variables no justifica un cliente GraphQL completo; la caché normalizada de esos clientes no sustituye la persistencia estructurada (§6.5) |
+| [`drift`](https://pub.dev/packages/drift) ^2.35 + [`drift_flutter`](https://pub.dev/packages/drift_flutter) ^0.3 | Base local SQLite | Claves, índices y transacciones reales; consultas reactivas que solo emiten datos confirmados; migraciones con esquemas exportados; ejecución en un isolate de fondo. Ver [ADR-0001](docs/adr/0001-persistencia-drift.md) |
+| [`connectivity_plus`](https://pub.dev/packages/connectivity_plus) ^7.3 | Cambios de red del dispositivo | Avisa al instante de Wi-Fi, datos o modo avión; la disponibilidad real se confirma con GraphQL. Ver [ADR-0002](docs/adr/0002-disponibilidad-graphql.md) |
+| [`cached_network_image`](https://pub.dev/packages/cached_network_image) ^4.0 + [`flutter_cache_manager`](https://pub.dev/packages/flutter_cache_manager) ^3.5 | Imágenes en disco | Caché con límite de objetos y caducidad configurables; permite precargar y mostrar sin red |
+| `drift_dev` ^2.35, `build_runner` ^2.17 (desarrollo) | Generación de código y migraciones de Drift | Requeridos por Drift |
+| `flutter_lints` ^6.0 (desarrollo) | Análisis estático | RNF-CAL-01 |
 
-La segunda línea muestra `Última actualización: HH:mm` a partir de
-`sync_metadata.last_success_at` (IND-04). Cada estado combina icono, texto y
-color, y una etiqueta `Semantics` con región en vivo que TalkBack anuncia
-(IND-05).
+**Gestión de estado.** Se usan `Stream` y `StreamBuilder` de Flutter con
+inyección por constructor, sin Riverpod ni BLoC. Cada repositorio expone un
+`Stream` observable (catálogo, favoritos, conectividad, sincronización) y las
+pantallas solo se suscriben. Para el alcance del avance evita una dependencia
+más; si la entrega final lo requiere, los contratos permiten introducir un
+gestor de estado sin cambiar las capas de datos.
 
-**Cómo se decide el estado (IND-02).**
-[`ApiConnectivityService`](lib/core/data/api_connectivity_service.dart) escucha
-los cambios de red de [`connectivity_plus`](https://pub.dev/packages/connectivity_plus)
-y, cuando hay red, envía `query { __typename }` a PokéAPI con límite de 5 s
-([`checkGraphqlService`](lib/core/data/graphql_health_check.dart)). Solo una
-respuesta GraphQL válida produce «En línea». La comprobación se repite cada
-30 s mientras haya red. Para evitar parpadeos (IND-06), perder «En línea»
-exige dos comprobaciones fallidas seguidas (la segunda a los 3 s); recuperarlo
-es inmediato.
+## Arquitectura
 
-**Disponibilidad y sincronización por separado (§7.4).** `ConnectivityStatus`
-y `SyncActivity` son contratos distintos.
-[`SyncActivityTracker`](lib/core/data/sync_activity_tracker.dart) marca
-`syncing` mientras `ObservableCatalogRepository` descarga y guarda. El
-indicador muestra «Sincronizando» solo con el servicio en línea, así que nunca
-aparece «sin conexión y sincronizando».
+Organización por funcionalidades con tres capas. Las dependencias apuntan
+hacia el dominio (P-04).
 
-**Reconexión (PA-07).** Al pasar de «Sin conexión» o «Servicio no disponible»
-a «En línea», `CatalogPage` llama a `refresh()` sin intervención del usuario.
+| Capa | Responsabilidad | No puede |
+|---|---|---|
+| `presentation` | Pantallas, widgets, estados de carga/vacío/error, indicador | Acceder a GraphQL ni a la base |
+| `domain` | Entidades (`PokemonId`, `PokemonSummary`, `CatalogSnapshot`), contratos de repositorio y servicios | Importar Flutter, Drift ni HTTP |
+| `data` | Repositorios, fuentes remota y local, DTO, tablas, caché de imágenes | Exponer DTO o filas de Drift a la presentación |
 
-**Pendiente para la entrega final:** reintentos con backoff (RNF-RES-02) y un
-mecanismo documentado para simular la API caída con red activa (PA-08).
-
-```sh
-flutter test test/core test/app test/catalog_page_test.dart
+```
+ Presentation                 Domain (contratos)                Data
+┌──────────────────┐   ┌──────────────────────────┐   ┌─────────────────────────────────┐
+│ CatalogPage      │──►│ CatalogRepository        │◄──│ ObservableCatalogRepository      │
+│ PokemonCatalogCard│  │ FavoritesRepository      │◄──│ DriftFavoritesRepository         │
+│ ConnectivityIndicator►│ ConnectivityService     │◄──│ ApiConnectivityService           │
+│ FavoritesPage    │   │ SyncActivityMonitor      │◄──│ SyncActivityTracker              │
+└──────────────────┘   └──────────────────────────┘   │  ├─ PokeApiCatalogSource (GraphQL)│
+                                                       │  ├─ DriftCatalogLocalStore (SQLite)│
+                                                       │  └─ CacheImagePrefetcher (disco) │
+                                                       └─────────────────────────────────┘
 ```
 
-## KAN-8 / PKD-02 — Base local con Drift
+[`AppDependencies.production()`](lib/app/app_dependencies.dart) es el único
+punto que crea implementaciones concretas y las entrega por constructor
+(RNF-MAN-03). `AppDependencies.demo()` usa dobles en memoria para las pruebas
+de widgets. Los acuerdos de contratos de KAN-7 están en
+[docs/architecture.md](docs/architecture.md).
 
-La app guarda el catálogo, los favoritos y los metadatos de sincronización en
-SQLite mediante [Drift](https://drift.simonbinder.eu). La interfaz solo lee de
-esta base (OF-16, OF-17): las respuestas de GraphQL se validan, se guardan en
-una transacción y la pantalla recibe el cambio porque observa la base.
+## Estructura del proyecto
+
+```
+lib/
+  app/                         composición, navegación e indicador global
+  core/
+    domain/                    PokemonId, ConnectivityService, SyncActivityMonitor
+    data/                      monitor de conectividad, tracker, caché de imágenes
+    database/                  AppDatabase (Drift) y sync_metadata
+  features/
+    catalog/
+      domain/                  PokemonSummary, CatalogSnapshot, CatalogRepository
+      data/
+        remote/                cliente GraphQL, fuente paginada y DTO
+        local/                 tablas y DriftCatalogLocalStore
+                               ObservableCatalogRepository, CacheImagePrefetcher
+      presentation/            CatalogPage y PokemonCatalogCard
+    favorites/                 domain / data (Drift) / presentation
+    pokemon_detail/            presentation (destino inicial)
+    trivia/                    presentation (reservado)
+drift_schemas/                 esquemas exportados por versión
+test/                          pruebas por capa (core, data/local, drift, app)
+docs/                          architecture.md y adr/
+```
+
+## Estrategia Offline-First
+
+- **Fuente de verdad local (OF-16, OF-17).** La pantalla del catálogo solo
+  observa `CatalogRepository.watchCatalog()`, que en producción es un
+  `Stream` de la base SQLite. Ningún widget recibe respuestas GraphQL.
+- **Recorrido de un dato.** PokéAPI → `PokeApiGraphqlClient` (POST) →
+  `PokemonCatalogDto` valida y convierte a `PokemonSummary` →
+  `ObservableCatalogRepository` → `DriftCatalogLocalStore.upsertPage`
+  (transacción) → Drift notifica el cambio → `watchCatalog()` emite una vista
+  nueva → `CatalogPage` redibuja.
+- **Sin bloqueos (OF-03).** Al abrir, la pantalla muestra de inmediato lo que
+  haya en la base (o el estado vacío) y, después del primer cuadro, llama a
+  `refresh()` en segundo plano. Se puede navegar mientras tanto.
+- **Carga inicial (PS-02).** La primera ejecución descarga solo la primera
+  página (20 Pokémon). Las siguientes se piden con «Cargar más». No se
+  descarga el catálogo completo de entrada.
+- **Sin conexión (OF-05, OF-10).** Si `refresh()` falla, la cuadrícula se
+  mantiene con los datos guardados y aparece «No se pudo actualizar el
+  catálogo» con un botón para reintentar. Tras un cierre forzado sin red, la
+  app abre con los mismos datos (PA-04, probado en dispositivo).
+- **Errores remotos (OF-04).** Una respuesta inválida o con `errors` de
+  GraphQL se rechaza antes de escribir; un fallo al guardar revierte la
+  transacción y no cambia la vista.
+
+## GraphQL y paginación
+
+[`PokeApiCatalogSource`](lib/features/catalog/data/remote/poke_api_catalog_source.dart)
+consulta `https://graphql.pokeapi.co/v1beta2` pidiendo solo los campos del
+catálogo: ID del recurso, número nacional (`pokemon_species_id`), nombre, tipos
+ordenados por ranura y sprites (arte oficial y frontal). Filtra
+`is_default` para mostrar la variedad predeterminada de cada especie y ordena
+por número nacional e ID.
+
+**Paginación por desplazamiento (RF-CAT-02).** PokéAPI admite `limit` y
+`offset`, y el orden fijo los hace estables:
+
+1. Cada página pide **21** registros para mostrar **20**.
+2. Si llegan 21, devuelve 20 y `nextOffset = offset + 20`; si llegan 20 o
+   menos, `nextOffset = null` (fin del catálogo).
+3. El desplazamiento se guarda en `sync_metadata` **en la misma transacción**
+   que los Pokémon, así que solo avanza si la página se guardó.
+
+**Errores.** [`PokeApiGraphqlClient`](lib/features/catalog/data/remote/poke_api_graphql_client.dart)
+limita la petición completa a **15 s** y cierra la conexión al terminar.
+Rechaza HTTP distinto de 200, JSON inválido y respuestas con `errors`, aunque
+traigan datos parciales. El diferenciado completo de errores (RNF-RES-05) es de
+la entrega final.
+
+## Sincronización
+
+| Evento | Qué hace |
+|---|---|
+| Abrir la pantalla del catálogo | `refresh()`: descarga la página 1 y reinicia el desplazamiento |
+| «Cargar más» | `loadNextPage()`: descarga la página indicada por `next_offset` |
+| «Reintentar» / «Reintentar actualización» | `refresh()` |
+| Pasar de «Sin conexión» o «Servicio no disponible» a «En línea» | `refresh()` automático (PA-07) y reintento de imágenes |
+
+- **Sin solicitudes concurrentes (RNF-RES-03).** `ObservableCatalogRepository`
+  serializa `refresh()` y `loadNextPage()` en una cola: cada operación lee el
+  desplazamiento que dejó la anterior.
+- **Sin duplicados (PS-06, PA-13).** Upsert por `PokemonId`; los tipos de cada
+  Pokémon recibido se reemplazan. Tres guardados de la misma página dejan los
+  mismos conteos (prueba automática).
+- **Transacciones (RNF-RES-04).** Pokémon, tipos y metadatos se confirman
+  juntos o no se confirma nada.
+- **Actividad visible.** Cada descarga se registra en `SyncActivityTracker`; el
+  indicador muestra «Sincronizando…» mientras dura.
+- **Registro de última sincronización (PS-09).** `sync_metadata.last_success_at`
+  llega al indicador como «Última actualización: HH:mm».
+
+## Persistencia local
+
+Base SQLite con Drift en el archivo `pokedex.sqlite` del directorio de la app.
 
 ### Modelo de datos (PS-01)
 
@@ -137,301 +228,116 @@ created_at (UTC)                   last_success_at (UTC)
 | `favorites` | Favoritos del usuario | [favorites_table.dart](lib/features/favorites/data/local/favorites_table.dart) |
 | `sync_metadata` | Última actualización exitosa y siguiente página por recurso | [sync_metadata_table.dart](lib/core/database/sync_metadata_table.dart) |
 
-[`AppDatabase`](lib/core/database/app_database.dart) reúne las tablas que
-define cada funcionalidad en su capa `data/local/`. Ninguna clase de Drift sale
-de la capa data: los adaptadores convierten las filas a `PokemonSummary`,
-`CatalogSnapshot` y `PokemonId`.
-
 **Índices (RNF-REN-02)**
 
 | Índice | Columnas | Uso |
 |---|---|---|
-| `idx_pokemon_order` | `pokemon(national_number, id)` | Orden del catálogo, igual al de la consulta GraphQL |
+| `idx_pokemon_order` | `pokemon(national_number, id)` | Orden del catálogo |
 | `idx_pokemon_name` | `pokemon(name)` | Búsqueda por nombre (RF-CAT-03) |
 | `idx_pokemon_types_type` | `pokemon_types(type_name)` | Filtro por tipo (RF-FIL-01) |
 
-### Decisiones de persistencia y sincronización
+**Decisiones**
 
-- **Claves estables (PS-05).** `pokemon.id` es el ID del recurso de PokéAPI, el
-  mismo valor que `PokemonId`. El número nacional se guarda aparte y no
-  identifica filas. Restricciones `CHECK` impiden IDs, `slot` y desplazamientos
-  negativos.
-- **Sin duplicados (PS-06).** [`DriftCatalogLocalStore.upsertPage`](lib/features/catalog/data/local/drift_catalog_local_store.dart)
-  inserta o actualiza cada Pokémon por su clave (`INSERT ... ON CONFLICT DO
-  UPDATE`). Los tipos de cada Pokémon recibido se borran y se vuelven a
-  insertar con su `slot`. Los Pokémon de otras páginas no se tocan.
-- **Escrituras transaccionales (RNF-RES-04).** Pokémon, tipos y metadatos se
-  guardan en una sola transacción. Si una instrucción falla, SQLite revierte
-  todo y Drift no notifica a los observadores, así que la pantalla conserva la
-  vista anterior (OF-04).
-- **Lectura observable.** `watchCatalog()` emite la vista actual al suscribirse
-  (vacía si no hay datos) y una vista nueva después de cada transacción
-  confirmada. Cada vista se lee dentro de una transacción para que Pokémon,
-  tipos y metadatos correspondan al mismo estado.
-- **Metadatos (PS-09).** `sync_metadata` guarda una fila por recurso. Para el
-  catálogo, `last_success_at` llega a la pantalla como
-  `CatalogSnapshot.lastUpdated` (base para IND-04) y `next_offset` define la
-  siguiente página y `hasMore`.
-- **Datos del usuario separados (PS-11).** `favorites.pokemon_id` es una
-  referencia lógica **sin** clave foránea. Ninguna operación sobre el catálogo
-  puede borrar o cambiar favoritos por cascada, y se puede marcar un favorito
-  aunque el Pokémon todavía no esté en el catálogo local.
-  [`DriftFavoritesRepository`](lib/features/favorites/data/local/drift_favorites_repository.dart)
-  es idempotente: repetir `true` conserva la fecha original.
-- **Fechas.** Se guardan como texto ISO-8601 en UTC (`build.yaml`) para
-  conservar los milisegundos y leerlas directamente en un inspector.
-- **Conexión.** En producción, `driftDatabase(name: 'pokedex')` abre el archivo
-  `pokedex.sqlite` en el directorio de documentos de la app y ejecuta SQLite en
-  un isolate de fondo (RNF-REN-03). La composición está en
-  [`AppDependencies.production()`](lib/app/app_dependencies.dart).
+- **Claves estables (PS-05).** `pokemon.id` es el ID del recurso de PokéAPI
+  (`PokemonId`); el número nacional se guarda aparte. Restricciones `CHECK`
+  impiden IDs, `slot` y desplazamientos negativos.
+- **Datos del usuario separados (PS-11).** `favorites.pokemon_id` no tiene
+  clave foránea: ninguna operación del catálogo puede borrar o modificar
+  favoritos. [`DriftFavoritesRepository`](lib/features/favorites/data/local/drift_favorites_repository.dart)
+  es idempotente (repetir `true` conserva la fecha original).
+- **Lectura consistente.** Cada vista del catálogo se lee dentro de una
+  transacción para que Pokémon, tipos y metadatos correspondan al mismo estado.
+- **Fechas** como texto ISO-8601 en UTC (`build.yaml`).
+- **Rendimiento (RNF-REN-03).** `drift_flutter` ejecuta SQLite en un isolate de
+  fondo.
 
-### Migraciones (PS-10)
+### Migraciones
 
 `AppDatabase.schemaVersion` es `1`. Cada versión publicada se exporta a
 [`drift_schemas/`](drift_schemas/app_database/) y una prueba valida que la base
-coincide con ese esquema. Para cambiar las tablas:
+coincide con ese esquema (PS-10). Para cambiar las tablas:
 
 1. Modificar la tabla y subir `schemaVersion`.
-2. Ejecutar `dart run build_runner build`.
-3. Ejecutar `dart run drift_dev make-migrations`, que exporta el nuevo esquema,
-   genera los pasos tipados y las pruebas de cada migración.
-4. Escribir el paso en `migration.onUpgrade` y correr `flutter test test/drift`.
+2. `dart run build_runner build`.
+3. `dart run drift_dev make-migrations` (exporta el esquema y genera los pasos
+   y sus pruebas).
+4. Escribir el paso en `migration.onUpgrade` y ejecutar `flutter test test/drift`.
 
-### Cómo probarlo
+### Revisar la base en un dispositivo
+
+Con la versión debug:
 
 ```sh
-dart run build_runner build      # solo si cambiaron las tablas
-flutter test test/data/local test/drift
+adb exec-out run-as com.example.dart_final_project cat app_flutter/pokedex.sqlite > pokedex.sqlite
 ```
 
-| Prueba | Qué comprueba |
+El archivo se abre con cualquier visor de SQLite para contar registros por
+tabla (PA-13).
+
+## Gestión de conectividad
+
+Una barra fija arriba de todas las pantallas (catálogo, favoritos, trivia y
+detalle) combina disponibilidad del servicio, actividad de sincronización y
+vigencia de los datos (IND-01 a IND-07).
+
+| Estado | Cuándo | Indicador |
+|---|---|---|
+| Verificando | Al iniciar, antes de la primera comprobación | «Verificando conexión…» |
+| En línea | PokéAPI respondió una consulta GraphQL | «En línea» |
+| Sincronizando | En línea y hay una descarga en curso | «Sincronizando…» con progreso |
+| Sin conexión | No hay red o no se resuelve el servidor | «Sin conexión» |
+| Servicio no disponible | Hay red, pero la API falla, tarda más de 5 s o devuelve errores | «Servicio no disponible» |
+
+- **Disponibilidad real (IND-02).**
+  [`ApiConnectivityService`](lib/core/data/api_connectivity_service.dart)
+  escucha `connectivity_plus` y, con red, envía `query { __typename }` a
+  PokéAPI con límite de 5 s, repetida cada 30 s. Solo una respuesta válida
+  produce «En línea».
+- **Sin parpadeos (IND-06).** Perder «En línea» exige dos fallos seguidos (el
+  segundo a los 3 s); recuperarlo es inmediato.
+- **Dimensiones separadas (§7.4).** `ConnectivityStatus` y `SyncActivity` son
+  contratos distintos; «Sincronizando» solo aparece con el servicio en línea.
+- **Vigencia (IND-04).** Segunda línea «Última actualización: HH:mm».
+- **Accesibilidad (IND-05).** Icono, texto y color, y una etiqueta `Semantics`
+  con región en vivo que TalkBack anuncia. El indicador se pinta después de
+  las rutas del `Navigator` para que su `BlockSemantics` no lo oculte.
+
+Detalle de la decisión en [ADR-0002](docs/adr/0002-disponibilidad-graphql.md).
+
+## Imágenes sin conexión
+
+| Decisión (PS-08) | Valor |
 |---|---|
-| [app_database_test.dart](test/data/local/app_database_test.dart) | Tablas, índices y claves foráneas activas |
-| [drift_catalog_local_store_test.dart](test/data/local/drift_catalog_local_store_test.dart) | Vista vacía, orden, tipos, metadatos; tres guardados iguales no cambian los conteos (PA-13); un fallo revierte todo y no emite |
-| [drift_catalog_repository_contract_test.dart](test/data/local/drift_catalog_repository_contract_test.dart) | `ObservableCatalogRepository` con la base real: refresh, fallo de GraphQL y paginación |
-| [drift_favorites_repository_test.dart](test/data/local/drift_favorites_repository_test.dart) | Idempotencia, varios observadores y que el catálogo no altere favoritos |
-| [database_persistence_test.dart](test/data/local/database_persistence_test.dart) | Cerrar y reabrir el archivo conserva catálogo, metadatos y favoritos |
-| [migration_test.dart](test/drift/app_database/migration_test.dart) | La base coincide con el esquema exportado v1 |
+| Qué se guarda | El arte oficial de cada Pokémon guardado (o su sprite si no tiene arte) |
+| Cuándo | Al guardar cada página, en segundo plano ([`CacheImagePrefetcher`](lib/features/catalog/data/catalog_image_prefetcher.dart), hasta 4 descargas a la vez); también al mostrarse una imagen nueva |
+| Dónde | Carpeta de caché de la app (`pokedex_images`), con el índice de `flutter_cache_manager` |
+| Límite | 1 200 imágenes ([`PokedexImageCache`](lib/core/data/pokedex_image_cache.dart)) |
+| Limpieza | Al pasar el límite se borran las menos usadas; las que no se usan en 365 días caducan |
+| Respaldo (OF-08) | Arte oficial → sprite → icono de Pokébola |
+| Memoria (RNF-REN-04) | Cada imagen se decodifica al ancho real de la tarjeta (`memCacheWidth`) |
 
-Prueba manual (PA-04 dentro del alcance del avance): abrir la app con red y
-cargar dos páginas; forzar el cierre; desactivar la red; volver a abrir. El
-catálogo sigue visible con un aviso de que no se pudo actualizar. Las imágenes
-offline corresponden a KAN-14 y el indicador de conectividad a KAN-13.
+La precarga no forma parte de la transacción ni del estado «Sincronizando»: si
+falla, la sincronización termina igual. Al volver la conexión se reintentan
+las imágenes que habían fallado. En el dispositivo de prueba, 40 Pokémon
+ocuparon ~6 MB y se vieron sin conexión tras un cierre forzado (PA-10).
 
-## KAN-10 / PKD-04 — Integración del catálogo remoto con la lectura local
+## Funcionalidades adicionales implementadas
 
-[`ObservableCatalogRepository`](lib/features/catalog/data/observable_catalog_repository.dart)
-coordina la descarga desde PokéAPI y el guardado. La pantalla sigue usando
-`CatalogRepository`. En la integración, `watchCatalog()` devuelve el flujo de
-la fuente local y la consulta remota solo se ejecuta al actualizar o paginar.
+Además de lo mínimo pedido para el avance:
 
-- **Actualización inicial.** `refresh()` descarga desde el desplazamiento 0,
-  conserva los registros de otras páginas y reinicia el desplazamiento para
-  volver a recorrer las páginas. Al repetir una página, el guardado actualiza
-  por `PokemonId`.
-- **Paginación.** `loadNextPage()` usa el desplazamiento guardado. Si es nulo,
-  termina sin consultar. Una cola serializa la actualización y las páginas
-  para que cada solicitud lea el desplazamiento que dejó la anterior.
-- **Escritura.** El [contrato local](lib/features/catalog/data/local/catalog_local_store.dart)
-  entrega los Pokémon, el desplazamiento y la fecha UTC a una sola operación.
-  El adaptador de KAN-8 debe confirmarlos en una transacción y publicar la
-  vista local solo después de confirmarla.
-- **Fallos.** Si GraphQL falla o devuelve datos inválidos, el repositorio
-  evita la escritura. Si falla el guardado, el contrato exige conservar los
-  registros, la fecha y el desplazamiento anteriores. El error llega a la
-  pantalla y la cola permite reintentar.
+- Indicador con los cuatro estados de la entrega final («Servicio no
+  disponible» y «Sincronizando», no solo Online/Offline) y la hora de la
+  última actualización.
+- Actualización automática del catálogo al recuperar la conexión (PA-07).
+- Precarga de imágenes para verlas sin conexión aunque nunca se hayan mostrado.
+- Cuadrícula responsiva de 1 a 4 columnas que se adapta al ancho y a la escala
+  del texto.
 
-```sh
-flutter test test/observable_catalog_repository_test.dart
-```
+Las funcionalidades complementarias del enunciado (RF-COM: PokémonCard,
+animaciones Hero, temas, internacionalización, mapa, onboarding) son de la
+entrega final.
 
-Las pruebas usan respuestas GraphQL controladas y una fuente local en memoria.
-Verifican lectura observable, actualización sin duplicados, conservación de
-datos ante fallos y paginación después de guardar. KAN-8 conectó el adaptador
-Drift al arranque y repite estos flujos con la base real.
-
-## KAN-12 / PKD-06 — Arranque y carga progresiva
-
-La pantalla se suscribe a `watchCatalog()` al abrirse. Al recibir la primera
-vista del repositorio, espera a que Flutter termine el cuadro actual y llama a
-`refresh()` en segundo plano. Si el catálogo ya contiene datos, las tarjetas
-permanecen visibles durante la actualización. Las pestañas siguen disponibles.
-
-| Decisión | Motivo |
-| --- | --- |
-| Mostrar **Cargar más** cuando `CatalogSnapshot.hasMore` es verdadero | El repositorio indica si quedan datos. El botón permite pedir la siguiente página de forma explícita. |
-| Deshabilitar la carga mientras hay una operación en curso | Evita solicitudes simultáneas por toques repetidos y evita paginar durante una actualización inicial. |
-| Mostrar el fallo junto a **Reintentar página** | Se conserva la cuadrícula y se puede reintentar sin perder los elementos visibles. |
-| Leer los nuevos elementos desde `watchCatalog()` | `loadNextPage()` solo indica si la operación terminó. La pantalla recibe el catálogo actualizado cuando lo publica el repositorio. |
-
-### Cómo probarlo
-
-1. Ejecuta `flutter run` y abre **Catálogo**. Verás tres Pokémon de prueba.
-2. Pulsa **Cargar más**. Mientras aparece el indicador, puedes navegar a otra
-   pestaña. Al regresar, podrás ver Pikachu, Jigglypuff y Meowth al desplazarte
-   por la cuadrícula. El botón desaparece al terminar la segunda página.
-3. Ejecuta `flutter test test/catalog_page_test.dart` para comprobar la
-   navegación durante una actualización pendiente, el bloqueo de solicitudes
-   repetidas y la recuperación de un error de página sin perder tarjetas.
-
-El repositorio de demostración simula dos páginas en memoria. KAN-10
-conectará la consulta GraphQL con la base local observable. La validación de
-PA-01 con una instalación limpia, datos reales e indicador de sincronización
-queda para la integración del avance.
-
-## KAN-11 / PKD-05 — Pantalla del catálogo
-
-La pantalla permite explorar Pokémon y abrir su detalle. Consume el
-`Stream<CatalogSnapshot>` del repositorio inyectado. Esto permite validar
-la interfaz con datos de prueba mientras avanza la integración con la base local.
-
-### Qué se implementó y por qué
-
-| Componente | Decisión |
-| --- | --- |
-| [`CatalogPage`](lib/features/catalog/presentation/catalog_page.dart) | Observa el repositorio y muestra carga, contenido, vacío o error. Conserva la navegación al detalle y usa `GridView.builder` para construir las tarjetas conforme aparecen en pantalla. |
-| [`PokemonCatalogCard`](lib/features/catalog/presentation/pokemon_catalog_card.dart) | Presenta nombre, número nacional con ceros iniciales, tipos e imagen. Si falta el arte oficial o falla su descarga, prueba el sprite disponible. Si tampoco hay sprite, muestra un ícono y conserva visible el resto de la tarjeta. |
-| [`DemoCatalogRepository`](lib/features/catalog/data/demo_catalog_repository.dart) | Provee tres registros iniciales con número, tipos y referencias a imágenes de PokéAPI. Los datos de las tarjetas están disponibles sin conexión. Las imágenes se cargan cuando sus enlaces están disponibles. |
-
-La cuadrícula usa entre una y cuatro columnas, según el ancho disponible y la
-escala del texto. Esto permite usar el espacio de pantallas anchas y mantener
-legibles las tarjetas en pantallas pequeñas o con texto ampliado.
-
-### Estados de pantalla
-
-| Estado | Qué se ve |
-| --- | --- |
-| Carga | Un indicador mientras llega la primera vista del repositorio o está en curso un reintento. |
-| Contenido | Las tarjetas de los Pokémon disponibles. |
-| Vacío | El mensaje «No hay Pokémon disponibles». |
-| Error | Un mensaje y el botón **Reintentar**. El botón llama a `refresh()` y, si termina correctamente, vuelve a suscribirse para recuperar incluso un flujo que se cerró. |
-
-### Cómo revisar el ticket
-
-1. Ejecuta `flutter pub get` y `flutter run` con un emulador o dispositivo.
-2. En **Catálogo**, comprueba que Bulbasaur (`#001`), Charmander (`#004`) y
-   Squirtle (`#007`) muestren sus nombres, tipos y arte.
-3. Abre una tarjeta y vuelve con el botón de retroceso. Prueba un ancho
-   distinto o aumenta el tamaño del texto para comprobar la cuadrícula.
-4. Ejecuta las pruebas de pantalla para reproducir carga, vacío, error,
-   recuperación mediante **Reintentar** y cambio de ancho.
-
-```sh
-flutter test test/catalog_page_test.dart
-```
-
-La validación del ticket pasó con `flutter analyze` y las 13 pruebas del proyecto.
-La persistencia y la carga de páginas remotas desde la pantalla corresponden
-a los tickets de integración y paginación.
-
-## KAN-9 / PKD-03 — Catálogo remoto con GraphQL
-
-El ticket implementa la descarga del catálogo de PokéAPI por páginas y
-convierte la respuesta en datos que el proyecto puede utilizar. Así KAN-10
-podrá guardar cada página en la base local y actualizar el catálogo a partir
-de esos datos. La pantalla sigue usando el catálogo de demostración hasta
-que se conecte esa integración.
-
-### Qué se implementó y por qué
-
-| Componente | Qué hace y por qué |
-| --- | --- |
-| [`PokeApiGraphqlClient`](lib/features/catalog/data/remote/poke_api_graphql_client.dart) | Envía la consulta y sus variables como JSON mediante un `POST` al endpoint `https://graphql.pokeapi.co/v1beta2`. Usa `HttpClient` de Dart y concentra el manejo de HTTP y el tiempo de espera en un solo lugar. |
-| [`PokeApiCatalogSource`](lib/features/catalog/data/remote/poke_api_catalog_source.dart) | Define qué campos pedir a PokéAPI, valida la respuesta y devuelve un `CatalogRemotePage` con la lista y el desplazamiento siguiente. Recibe una función de consulta por constructor para probar la paginación con respuestas controladas. |
-| [`PokemonCatalogDto`](lib/features/catalog/data/remote/pokemon_catalog_dto.dart) | Lee y valida la estructura JSON de PokéAPI. Convierte cada registro en `PokemonSummary` para que la base local y la interfaz trabajen con el modelo del proyecto. |
-| [`PokemonSummary`](lib/features/catalog/domain/pokemon_summary.dart) | Conserva el ID y el nombre, y agrega número nacional, tipos, arte oficial y sprite frontal. La lista de tipos se copia como inmutable y las imágenes pueden estar ausentes. Los constructores existentes que pasan ID y nombre siguen funcionando. |
-| [`AndroidManifest.xml`](android/app/src/main/AndroidManifest.xml) | Declara el permiso de Internet en el manifiesto principal para que Android pueda hacer las consultas también en compilaciones de distribución. |
-
-La consulta filtra por `is_default` para mostrar la variedad predeterminada
-de cada especie en el catálogo inicial. Ordena por número nacional y usa el
-ID del recurso para desempatar. También ordena los tipos por su ranura para
-conservar su orden original.
-
-El ID de un recurso Pokémon y el número nacional cumplen funciones distintas.
-`PokemonId` identifica el registro que la app usará para consultar el detalle
-o guardar favoritos. El número nacional viene de `pokemon_species_id` y
-permite ordenar y mostrar las especies en la Pokédex. Las imágenes se
-devuelven como referencias HTTP o HTTPS para que la descarga pueda manejarse
-por separado.
-
-### Cómo funciona la paginación
-
-1. `fetchPage()` empieza en `offset: 0` y devuelve hasta 20 Pokémon. Se
-   puede pedir un tamaño entre 1 y 100.
-2. Para una página de 20, la consulta pide 21 registros. Si llegan 21, la
-   fuente entrega los primeros 20 y devuelve `nextOffset: 20`. El registro
-   adicional se incluirá al consultar la segunda página.
-3. Si llegan 20 o menos, devuelve esos registros y `nextOffset: null`.
-   Eso permite detectar el final incluso cuando la última página tiene
-   exactamente 20 Pokémon. `hasMore` se deriva de `nextOffset`.
-
-KAN-10 podrá pasar ese desplazamiento a la siguiente llamada después de
-guardar la página correctamente. Si falla la descarga o el guardado,
-conservar el desplazamiento permite reintentar la misma página.
-
-### Manejo de errores
-
-El cliente aplica un límite de **15 segundos** a la petición completa,
-incluida la lectura de la respuesta, y cierra la conexión al terminar.
-Reporta estados HTTP distintos de 200 y respuestas que tengan un formato
-inválido. GraphQL puede devolver HTTP 200 con un campo `errors`. La fuente
-rechaza esa respuesta, incluso si trae datos parciales, para que el
-repositorio pueda conservar el catálogo válido que ya tenga guardado.
-La ausencia de una imagen es un caso válido y se representa con `null`.
-
-### Ejemplo de uso
-
-```dart
-import 'package:dart_final_project/features/catalog/data/remote/poke_api_catalog_source.dart';
-
-Future<void> main() async {
-  final source = PokeApiCatalogSource();
-  final firstPage = await source.fetchPage();
-
-  for (final pokemon in firstPage.items) {
-    print('#${pokemon.nationalNumber} ${pokemon.name} · ${pokemon.types.join(', ')}');
-  }
-
-  final nextOffset = firstPage.nextOffset;
-  if (nextOffset != null) {
-    final nextPage = await source.fetchPage(offset: nextOffset);
-    print('Pokémon en la segunda página: ${nextPage.items.length}');
-  }
-}
-```
-
-Para probar la conexión manualmente, guarda el ejemplo como
-`tool/check_catalog.dart` y ejecuta `dart run tool/check_catalog.dart` desde
-la raíz después de `flutter pub get`.
-
-### Cómo se verificó
-
-```sh
-flutter test test/catalog_remote_source_test.dart
-```
-
-Las cuatro pruebas de KAN-9 cubren el mapeo de campos, el cambio de página,
-la separación entre ID y número nacional, las imágenes ausentes y el rechazo
-de datos inválidos o errores GraphQL. El análisis de Dart y las 10 pruebas
-del proyecto pasaron. Una comprobación adicional con un servidor local
-validó el `POST`, el manejo de errores HTTP y el tiempo de espera.
-
-La consulta al endpoint público quedó pendiente de confirmar porque PokéAPI
-devolvió HTTP 504 durante la prueba en vivo.
-
-## Estructura
-
-- `lib/app/`: aplicación, navegación e inyección por constructor.
-- `lib/core/`: identidad y servicios compartidos.
-- `lib/features/`: catálogo, detalle, favoritos y trivia.
-- `test/`: pruebas de contratos, navegación y sustitución de dependencias.
-- `docs/architecture.md`: acuerdos de KAN-7 y detalles de la fuente remota de KAN-9.
-
-Cada funcionalidad incorpora `domain`, `data` y `presentation` según su necesidad.
-El dominio utiliza Dart puro. Las pantallas dependen de interfaces; las
-implementaciones se seleccionan en `AppDependencies`.
-
-## Validación
+## Pruebas y verificación
 
 ```sh
 dart format --output=none --set-exit-if-changed lib test
@@ -439,6 +345,71 @@ flutter analyze
 flutter test
 ```
 
-Consultar [Arquitectura y contratos](docs/architecture.md) antes de implementar
-los siguientes tickets. El acuerdo y la contribución verificable del segundo
-integrante siguen pendientes de revisión conjunta.
+Estado actual: análisis sin problemas y **59 pruebas** en verde.
+
+| Área | Pruebas |
+|---|---|
+| Contratos y navegación | [contracts_test.dart](test/contracts_test.dart), [widget_test.dart](test/widget_test.dart) |
+| GraphQL y paginación | [catalog_remote_source_test.dart](test/catalog_remote_source_test.dart) |
+| Repositorio observable | [observable_catalog_repository_test.dart](test/observable_catalog_repository_test.dart), [drift_catalog_repository_contract_test.dart](test/data/local/drift_catalog_repository_contract_test.dart) |
+| Base local | [app_database_test.dart](test/data/local/app_database_test.dart), [drift_catalog_local_store_test.dart](test/data/local/drift_catalog_local_store_test.dart) (sin duplicados, reversión), [drift_favorites_repository_test.dart](test/data/local/drift_favorites_repository_test.dart), [database_persistence_test.dart](test/data/local/database_persistence_test.dart) (reapertura), [migration_test.dart](test/drift/app_database/migration_test.dart) |
+| Conectividad | [api_connectivity_service_test.dart](test/core/api_connectivity_service_test.dart), [graphql_health_check_test.dart](test/core/graphql_health_check_test.dart), [sync_activity_tracker_test.dart](test/core/sync_activity_tracker_test.dart), [connectivity_indicator_test.dart](test/app/connectivity_indicator_test.dart) |
+| Pantalla del catálogo e imágenes | [catalog_page_test.dart](test/catalog_page_test.dart), [catalog_image_prefetcher_test.dart](test/catalog_image_prefetcher_test.dart) |
+
+**Pruebas manuales en dispositivo (Samsung Galaxy A34, Android 14)**
+
+| Escenario | Resultado |
+|---|---|
+| PA-04: cargar 40 Pokémon, cierre forzado, modo avión, reabrir | Los 40 siguen visibles con nombre, número y tipos |
+| PA-07: quitar el modo avión sin tocar la app | «Sin conexión» → «Sincronizando…» → «En línea» y la hora se actualiza |
+| PA-10: imágenes tras reinicio sin conexión | Las 40 imágenes visibles, incluidas las que nunca se mostraron con red |
+| PA-12 (parcial): indicador en catálogo, favoritos, trivia y detalle | Visible y fijo en todas |
+
+## Limitaciones conocidas
+
+- **Funcionalidades de la entrega final:** detalle completo, favoritos en la
+  interfaz (el repositorio persistente ya existe), búsqueda, filtros,
+  ordenación y trivia.
+- **Resiliencia:** sin reintentos automáticos con backoff (RNF-RES-02) ni
+  manejo diferenciado de limitación de tasa; `sync_metadata.status` solo
+  registra `success`.
+- **PA-08:** no hay todavía un mecanismo documentado para simular la API caída
+  con red activa.
+- **OF-19 a OF-21:** la restauración de datos del catálogo alterados
+  localmente no está implementada.
+- **Inspector en vivo (PA-16):** la base se puede copiar con `adb run-as`, pero
+  no editar en vivo desde la app.
+- **Lectura del catálogo:** cada cambio relee el catálogo completo; es
+  suficiente para ~1 000 Pokémon.
+- **Caché de imágenes:** si Android vacía la carpeta de caché por falta de
+  espacio, las imágenes se vuelven a descargar en la siguiente sincronización.
+- **Gestión de estado:** `Stream` y `StreamBuilder` en lugar de Riverpod o
+  BLoC (ver [Tecnologías](#tecnologías-y-justificación)).
+
+## Decisiones de arquitectura (ADR)
+
+| ADR | Decisión |
+|---|---|
+| [ADR-0001](docs/adr/0001-persistencia-drift.md) | SQLite con Drift como persistencia local |
+| [ADR-0002](docs/adr/0002-disponibilidad-graphql.md) | Detectar la disponibilidad real con una consulta GraphQL |
+
+## Uso de herramientas de IA
+
+Utilizamos herramientas de inteligencia artificial como apoyo para elegir las
+librerías que más convenían al proyecto, para saber cómo implementar ciertas
+funcionalidades (por ejemplo, el almacenamiento local de los datos) y para
+reconocer y evitar malas prácticas en el código. También la utilizamos para la elaboración de las documentaciones del proyecto.
+
+## Historial por ticket
+
+| Ticket | Qué aportó |
+|---|---|
+| KAN-7 / PKD-01 | Estructura por funcionalidades, navegación y contratos de dominio ([docs/architecture.md](docs/architecture.md)) |
+| KAN-9 / PKD-03 | Consulta paginada del catálogo a PokéAPI por GraphQL, DTO y límite de 15 s |
+| KAN-11 / PKD-05 | Pantalla del catálogo con estados de carga, vacío, error y «Reintentar»; cuadrícula de 1 a 4 columnas |
+| KAN-12 / PKD-06 | Arranque sin bloqueos y «Cargar más» |
+| KAN-10 / PKD-04 | `ObservableCatalogRepository`: GraphQL alimenta la fuente local y la pantalla solo la observa |
+| KAN-8 / PKD-02 | Base SQLite con Drift, favoritos persistentes, metadatos y migraciones |
+| KAN-13 / PKD-07 | Monitor de disponibilidad real, indicador global y actualización al reconectar |
+| KAN-14 / PKD-08 | Caché de imágenes en disco y precarga para uso sin conexión |
+| KAN-15 / PKD-09 | Esta documentación y los ADR |
