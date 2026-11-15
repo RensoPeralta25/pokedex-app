@@ -2,10 +2,12 @@ import 'package:drift_flutter/drift_flutter.dart';
 
 import '../core/data/api_connectivity_service.dart';
 import '../core/data/demo_connectivity_service.dart';
+import '../core/data/pokedex_image_cache.dart';
 import '../core/data/sync_activity_tracker.dart';
 import '../core/database/app_database.dart';
 import '../core/domain/connectivity_service.dart';
 import '../core/domain/sync_activity_monitor.dart';
+import '../features/catalog/data/catalog_image_prefetcher.dart';
 import '../features/catalog/data/demo_catalog_repository.dart';
 import '../features/catalog/data/local/drift_catalog_local_store.dart';
 import '../features/catalog/data/observable_catalog_repository.dart';
@@ -32,6 +34,7 @@ final class AppDependencies {
         remote: PokeApiCatalogSource(),
         local: DriftCatalogLocalStore(database),
         activity: syncActivity,
+        images: CacheImagePrefetcher.forCache(PokedexImageCache.instance),
       ),
       favorites: DriftFavoritesRepository(database),
       connectivity: ApiConnectivityService.forDevice(
