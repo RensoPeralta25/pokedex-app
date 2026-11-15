@@ -47,7 +47,7 @@ sincronización y la vigencia de los datos locales.
 | Sin conexión | El dispositivo no tiene red o no resuelve el servidor | «Sin conexión» |
 | Servicio no disponible | Hay red, pero la API falla, tarda más de 5 s o devuelve errores | «Servicio no disponible» |
 
-La segunda línea muestra `Datos locales · actualizado HH:mm` a partir de
+La segunda línea muestra `Última actualización: HH:mm` a partir de
 `sync_metadata.last_success_at` (IND-04). Cada estado combina icono, texto y
 color, y una etiqueta `Semantics` con región en vivo que TalkBack anuncia
 (IND-05).
