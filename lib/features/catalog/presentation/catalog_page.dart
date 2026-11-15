@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../../core/domain/connectivity_service.dart';
 import '../../pokemon_detail/presentation/pokemon_detail_page.dart';
 import '../domain/catalog_repository.dart';
 import '../domain/catalog_snapshot.dart';
@@ -7,9 +10,11 @@ import '../domain/pokemon_summary.dart';
 import 'pokemon_catalog_card.dart';
 
 class CatalogPage extends StatefulWidget {
-  const CatalogPage({super.key, required this.repository});
+  const CatalogPage({super.key, required this.repository, this.connectivity});
 
   final CatalogRepository repository;
+
+  final ConnectivityService? connectivity;
 
   @override
   State<CatalogPage> createState() => _CatalogPageState();
@@ -17,6 +22,7 @@ class CatalogPage extends StatefulWidget {
 
 class _CatalogPageState extends State<CatalogPage> {
   late Stream<CatalogSnapshot> _catalog;
+  StreamSubscription<ConnectivityStatus>? _connectivitySubscription;
   bool _refreshing = false;
   bool _loadingNextPage = false;
   bool _nextPageFailed = false;
@@ -27,11 +33,34 @@ class _CatalogPageState extends State<CatalogPage> {
   void initState() {
     super.initState();
     _catalog = _watchCatalogAndRefresh();
+    _listenConnectivity();
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
+  }
+
+  void _listenConnectivity() {
+    _connectivitySubscription?.cancel();
+    ConnectivityStatus? previous;
+    _connectivitySubscription = widget.connectivity?.watchStatus().listen((
+      status,
+    ) {
+      final reconnected =
+          status == ConnectivityStatus.online &&
+          (previous == ConnectivityStatus.offline ||
+              previous == ConnectivityStatus.serviceUnavailable);
+      previous = status;
+      if (reconnected && mounted) _refresh();
+    });
   }
 
   @override
   void didUpdateWidget(CatalogPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.connectivity != widget.connectivity) _listenConnectivity();
     if (oldWidget.repository != widget.repository) {
       _repositoryVersion++;
       _catalog = _watchCatalogAndRefresh();
