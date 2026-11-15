@@ -1,16 +1,26 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
+import '../../../core/data/pokedex_image_cache.dart';
 
 import '../domain/pokemon_summary.dart';
 
 class PokemonCatalogCard extends StatelessWidget {
-  const PokemonCatalogCard({
+  PokemonCatalogCard({
     super.key,
     required this.pokemon,
     required this.onTap,
-  });
+    this.imageGeneration = 0,
+    BaseCacheManager? imageCache,
+  }) : imageCache = imageCache ?? PokedexImageCache.instance;
 
   final PokemonSummary pokemon;
   final VoidCallback onTap;
+
+  /// Al cambiar, las imágenes que fallaron se vuelven a intentar.
+  final int imageGeneration;
+  final BaseCacheManager imageCache;
 
   static const _typeNames = {
     'normal': 'Normal',
@@ -62,6 +72,8 @@ class PokemonCatalogCard extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(8),
                     child: _PokemonImage(
+                      key: ValueKey(imageGeneration),
+                      cacheManager: imageCache,
                       artworkUrl: pokemon.artworkUrl,
                       spriteUrl: pokemon.spriteUrl,
                     ),
@@ -102,21 +114,18 @@ class PokemonCatalogCard extends StatelessWidget {
 }
 
 class _PokemonImage extends StatelessWidget {
-  const _PokemonImage({this.artworkUrl, this.spriteUrl});
+  const _PokemonImage({
+    super.key,
+    required this.cacheManager,
+    this.artworkUrl,
+    this.spriteUrl,
+  });
 
+  final BaseCacheManager cacheManager;
   final Uri? artworkUrl;
   final Uri? spriteUrl;
 
   static const _placeholder = Icon(Icons.catching_pokemon, size: 32);
-
-  Widget _loadImage(Uri url, {required Widget fallback}) => Image.network(
-    url.toString(),
-    fit: BoxFit.contain,
-    excludeFromSemantics: true,
-    frameBuilder: (context, child, frame, synchronouslyLoaded) =>
-        frame == null && !synchronouslyLoaded ? _placeholder : child,
-    errorBuilder: (context, error, stackTrace) => fallback,
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -124,13 +133,29 @@ class _PokemonImage extends StatelessWidget {
     final sprite = spriteUrl;
     if (artwork == null && sprite == null) return _placeholder;
 
-    if (artwork != null && sprite != null && artwork != sprite) {
-      return _loadImage(
-        artwork,
-        fallback: _loadImage(sprite, fallback: _placeholder),
-      );
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Se decodifica al tamaño del hueco, no al original (RNF-REN-04).
+        final width = constraints.maxWidth.isFinite
+            ? (constraints.maxWidth * MediaQuery.devicePixelRatioOf(context))
+                  .round()
+            : null;
 
-    return _loadImage(artwork ?? sprite!, fallback: _placeholder);
+        Widget load(Uri url, {required Widget fallback}) => CachedNetworkImage(
+          imageUrl: url.toString(),
+          cacheManager: cacheManager,
+          memCacheWidth: width,
+          fit: BoxFit.contain,
+          fadeInDuration: const Duration(milliseconds: 150),
+          placeholder: (context, url) => _placeholder,
+          errorWidget: (context, url, error) => fallback,
+        );
+
+        final image = artwork != null && sprite != null && artwork != sprite
+            ? load(artwork, fallback: load(sprite, fallback: _placeholder))
+            : load(artwork ?? sprite!, fallback: _placeholder);
+        return ExcludeSemantics(child: image);
+      },
+    );
   }
 }
