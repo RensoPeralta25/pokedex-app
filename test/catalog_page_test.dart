@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:dart_final_project/app/app_dependencies.dart';
 import 'package:dart_final_project/app/pokedex_app.dart';
 import 'package:dart_final_project/core/data/demo_connectivity_service.dart';
+import 'package:dart_final_project/core/domain/connectivity_service.dart';
 import 'package:dart_final_project/core/domain/pokemon_id.dart';
 import 'package:dart_final_project/features/catalog/domain/catalog_repository.dart';
 import 'package:dart_final_project/features/catalog/domain/catalog_snapshot.dart';
@@ -13,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  _reconnectionTests();
+
   testWidgets('muestra carga hasta que llega el catálogo vacío', (
     tester,
   ) async {
@@ -193,6 +196,44 @@ void main() {
     expect(find.text('Pikachu'), findsOneWidget);
     expect(find.text('Venusaur'), findsOneWidget);
     expect(load, findsNothing);
+  });
+}
+
+void _reconnectionTests() {
+  testWidgets('actualiza solo al recuperar la conexión, no al arrancar', (
+    tester,
+  ) async {
+    var refreshes = 0;
+    final connectivity = DemoConnectivityService();
+    addTearDown(connectivity.dispose);
+    final repository = _CatalogRepository(
+      watch: () => Stream.value(_snapshot()),
+      refreshCatalog: () async => refreshes++,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CatalogPage(repository: repository, connectivity: connectivity),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(refreshes, 1);
+
+    connectivity.set(ConnectivityStatus.online);
+    await tester.pumpAndSettle();
+    expect(refreshes, 1);
+
+    connectivity.set(ConnectivityStatus.offline);
+    await tester.pumpAndSettle();
+    connectivity.set(ConnectivityStatus.online);
+    await tester.pumpAndSettle();
+    expect(refreshes, 2);
+
+    connectivity.set(ConnectivityStatus.serviceUnavailable);
+    await tester.pumpAndSettle();
+    connectivity.set(ConnectivityStatus.online);
+    await tester.pumpAndSettle();
+    expect(refreshes, 3);
   });
 }
 

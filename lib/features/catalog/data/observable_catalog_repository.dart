@@ -1,3 +1,4 @@
+import '../../../core/data/sync_activity_tracker.dart';
 import '../domain/catalog_repository.dart';
 import '../domain/catalog_snapshot.dart';
 import 'local/catalog_local_store.dart';
@@ -8,11 +9,13 @@ final class ObservableCatalogRepository implements CatalogRepository {
   ObservableCatalogRepository({
     required this.remote,
     required this.local,
+    this.activity,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
   final PokeApiCatalogSource remote;
   final CatalogLocalStore local;
+  final SyncActivityTracker? activity;
   final DateTime Function() _now;
   Future<void> _pending = Future.value();
 
@@ -28,13 +31,17 @@ final class ObservableCatalogRepository implements CatalogRepository {
     if (offset != null) await _downloadAndStore(offset);
   });
 
-  Future<void> _downloadAndStore(int offset) async {
-    final page = await remote.fetchPage(offset: offset);
-    await local.upsertPage(
-      items: page.items,
-      nextOffset: page.nextOffset,
-      updatedAt: _now().toUtc(),
-    );
+  Future<void> _downloadAndStore(int offset) {
+    Future<void> download() async {
+      final page = await remote.fetchPage(offset: offset);
+      await local.upsertPage(
+        items: page.items,
+        nextOffset: page.nextOffset,
+        updatedAt: _now().toUtc(),
+      );
+    }
+
+    return activity?.track(download) ?? download();
   }
 
   Future<void> _enqueue(Future<void> Function() operation) {

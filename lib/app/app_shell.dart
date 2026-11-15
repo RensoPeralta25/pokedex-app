@@ -22,7 +22,10 @@ class _AppShellState extends State<AppShell> {
     body: IndexedStack(
       index: _selectedIndex,
       children: [
-        CatalogPage(repository: widget.dependencies.catalog),
+        CatalogPage(
+          repository: widget.dependencies.catalog,
+          connectivity: widget.dependencies.connectivity,
+        ),
         FavoritesPage(repository: widget.dependencies.favorites),
         const TriviaPage(),
       ],

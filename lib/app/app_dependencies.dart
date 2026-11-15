@@ -1,8 +1,11 @@
 import 'package:drift_flutter/drift_flutter.dart';
 
+import '../core/data/api_connectivity_service.dart';
 import '../core/data/demo_connectivity_service.dart';
+import '../core/data/sync_activity_tracker.dart';
 import '../core/database/app_database.dart';
 import '../core/domain/connectivity_service.dart';
+import '../core/domain/sync_activity_monitor.dart';
 import '../features/catalog/data/demo_catalog_repository.dart';
 import '../features/catalog/data/local/drift_catalog_local_store.dart';
 import '../features/catalog/data/observable_catalog_repository.dart';
@@ -14,22 +17,27 @@ import '../features/favorites/domain/favorites_repository.dart';
 
 /// Punto de composición: las pantallas reciben contratos, no crean servicios.
 final class AppDependencies {
-  const AppDependencies({
+  AppDependencies({
     required this.catalog,
     required this.favorites,
     required this.connectivity,
-  });
+    SyncActivityMonitor? syncActivity,
+  }) : syncActivity = syncActivity ?? SyncActivityTracker();
 
   factory AppDependencies.production() {
     final database = AppDatabase(driftDatabase(name: 'pokedex'));
+    final syncActivity = SyncActivityTracker();
     return AppDependencies(
       catalog: ObservableCatalogRepository(
         remote: PokeApiCatalogSource(),
         local: DriftCatalogLocalStore(database),
+        activity: syncActivity,
       ),
       favorites: DriftFavoritesRepository(database),
-      // TODO(KAN-13): reemplazar por el monitor real de conectividad.
-      connectivity: DemoConnectivityService(),
+      connectivity: ApiConnectivityService.forDevice(
+        Uri.https('graphql.pokeapi.co', '/v1beta2'),
+      ),
+      syncActivity: syncActivity,
     );
   }
 
@@ -42,4 +50,5 @@ final class AppDependencies {
   final CatalogRepository catalog;
   final FavoritesRepository favorites;
   final ConnectivityService connectivity;
+  final SyncActivityMonitor syncActivity;
 }
