@@ -1,0 +1,503 @@
+{
+  "_meta": {
+    "description": "This file contains a serialized version of schema entities for drift.",
+    "version": "1.3.0"
+  },
+  "options": {
+    "store_date_time_values_as_text": true
+  },
+  "entities": [
+    {
+      "id": 0,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "pokemon",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "id",
+            "getter_name": "id",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "check": {
+                  "dart_expression": {
+                    "elements": [
+                      {
+                        "lexeme": "ComparableExpr",
+                        "import_uri": "package:drift/src/runtime/query_builder/query_builder.dart"
+                      },
+                      "(",
+                      {
+                        "lexeme": "id",
+                        "tag": "id"
+                      },
+                      ").isBiggerThanValue(0)"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "name",
+            "getter_name": "name",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "national_number",
+            "getter_name": "nationalNumber",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "artwork_url",
+            "getter_name": "artworkUrl",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "sprite_url",
+            "getter_name": "spriteUrl",
+            "moor_type": "string",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "updated_at",
+            "getter_name": "updatedAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "id"
+        ]
+      }
+    },
+    {
+      "id": 1,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "types",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "name",
+            "getter_name": "name",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "name"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "references": [
+        0,
+        1
+      ],
+      "type": "table",
+      "data": {
+        "name": "pokemon_types",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "pokemon_id",
+            "getter_name": "pokemonId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES pokemon (id) ON DELETE CASCADE",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES pokemon (id) ON DELETE CASCADE"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "pokemon",
+                    "column": "id"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": "cascade"
+                }
+              }
+            ]
+          },
+          {
+            "name": "slot",
+            "getter_name": "slot",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "check": {
+                  "dart_expression": {
+                    "elements": [
+                      {
+                        "lexeme": "ComparableExpr",
+                        "import_uri": "package:drift/src/runtime/query_builder/query_builder.dart"
+                      },
+                      "(",
+                      {
+                        "lexeme": "slot",
+                        "tag": "slot"
+                      },
+                      ").isBiggerThanValue(0)"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "type_name",
+            "getter_name": "typeName",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "defaultConstraints": "REFERENCES types (name)",
+            "dialectAwareDefaultConstraints": {
+              "sqlite": "REFERENCES types (name)"
+            },
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "foreign_key": {
+                  "to": {
+                    "table": "types",
+                    "column": "name"
+                  },
+                  "initially_deferred": false,
+                  "on_update": null,
+                  "on_delete": null
+                }
+              }
+            ]
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "pokemon_id",
+          "slot"
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "favorites",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "pokemon_id",
+            "getter_name": "pokemonId",
+            "moor_type": "int",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "check": {
+                  "dart_expression": {
+                    "elements": [
+                      {
+                        "lexeme": "ComparableExpr",
+                        "import_uri": "package:drift/src/runtime/query_builder/query_builder.dart"
+                      },
+                      "(",
+                      {
+                        "lexeme": "pokemonId",
+                        "tag": "pokemonId"
+                      },
+                      ").isBiggerThanValue(0)"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "created_at",
+            "getter_name": "createdAt",
+            "moor_type": "dateTime",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "pokemon_id"
+        ]
+      }
+    },
+    {
+      "id": 4,
+      "references": [],
+      "type": "table",
+      "data": {
+        "name": "sync_metadata",
+        "was_declared_in_moor": false,
+        "columns": [
+          {
+            "name": "resource_key",
+            "getter_name": "resourceKey",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "last_success_at",
+            "getter_name": "lastSuccessAt",
+            "moor_type": "dateTime",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          },
+          {
+            "name": "next_offset",
+            "getter_name": "nextOffset",
+            "moor_type": "int",
+            "nullable": true,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": [
+              {
+                "check": {
+                  "dart_expression": {
+                    "elements": [
+                      {
+                        "lexeme": "ComparableExpr",
+                        "import_uri": "package:drift/src/runtime/query_builder/query_builder.dart"
+                      },
+                      "(",
+                      {
+                        "lexeme": "nextOffset",
+                        "tag": "nextOffset"
+                      },
+                      ").isBiggerOrEqualValue(0)"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "name": "status",
+            "getter_name": "status",
+            "moor_type": "string",
+            "nullable": false,
+            "customConstraints": null,
+            "default_dart": null,
+            "default_client_dart": null,
+            "dsl_features": []
+          }
+        ],
+        "is_virtual": false,
+        "without_rowid": false,
+        "constraints": [],
+        "explicit_pk": [
+          "resource_key"
+        ]
+      }
+    },
+    {
+      "id": 5,
+      "references": [
+        0
+      ],
+      "type": "index",
+      "data": {
+        "on": 0,
+        "name": "idx_pokemon_order",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "national_number",
+            "order_by": null
+          },
+          {
+            "column": "id",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "references": [
+        0
+      ],
+      "type": "index",
+      "data": {
+        "on": 0,
+        "name": "idx_pokemon_name",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "name",
+            "order_by": null
+          }
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "references": [
+        2
+      ],
+      "type": "index",
+      "data": {
+        "on": 2,
+        "name": "idx_pokemon_types_type",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "type_name",
+            "order_by": null
+          }
+        ]
+      }
+    }
+  ],
+  "fixed_sql": [
+    {
+      "name": "pokemon",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"pokemon\" (\"id\" INTEGER NOT NULL CHECK(\"id\" > 0), \"name\" TEXT NOT NULL, \"national_number\" INTEGER NULL, \"artwork_url\" TEXT NULL, \"sprite_url\" TEXT NULL, \"updated_at\" TEXT NOT NULL, PRIMARY KEY (\"id\"));"
+        }
+      ]
+    },
+    {
+      "name": "types",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"types\" (\"name\" TEXT NOT NULL, PRIMARY KEY (\"name\"));"
+        }
+      ]
+    },
+    {
+      "name": "pokemon_types",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"pokemon_types\" (\"pokemon_id\" INTEGER NOT NULL REFERENCES pokemon (id) ON DELETE CASCADE, \"slot\" INTEGER NOT NULL CHECK(\"slot\" > 0), \"type_name\" TEXT NOT NULL REFERENCES types (name), PRIMARY KEY (\"pokemon_id\", \"slot\"));"
+        }
+      ]
+    },
+    {
+      "name": "favorites",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"favorites\" (\"pokemon_id\" INTEGER NOT NULL CHECK(\"pokemon_id\" > 0), \"created_at\" TEXT NOT NULL, PRIMARY KEY (\"pokemon_id\"));"
+        }
+      ]
+    },
+    {
+      "name": "sync_metadata",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE TABLE IF NOT EXISTS \"sync_metadata\" (\"resource_key\" TEXT NOT NULL, \"last_success_at\" TEXT NULL, \"next_offset\" INTEGER NULL CHECK(\"next_offset\" >= 0), \"status\" TEXT NOT NULL, PRIMARY KEY (\"resource_key\"));"
+        }
+      ]
+    },
+    {
+      "name": "idx_pokemon_order",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX idx_pokemon_order ON pokemon (national_number, id)"
+        }
+      ]
+    },
+    {
+      "name": "idx_pokemon_name",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX idx_pokemon_name ON pokemon (name)"
+        }
+      ]
+    },
+    {
+      "name": "idx_pokemon_types_type",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX idx_pokemon_types_type ON pokemon_types (type_name)"
+        }
+      ]
+    }
+  ]
+}
