@@ -7,6 +7,7 @@ funcionalidades, la navegación inicial y los contratos entre módulos.
 **KAN-12 / PKD-06** añadió el arranque sin bloqueos y la carga progresiva.
 **KAN-10 / PKD-04** conectó GraphQL con la lectura local observable.
 **KAN-8 / PKD-02** añadió la base SQLite (Drift) como fuente de verdad.
+**KAN-13 / PKD-07** añadió el indicador global de conectividad.
 
 ## Requisitos y ejecución
 
@@ -31,6 +32,52 @@ Al abrirse, la app muestra lo que haya en la base local y, en segundo plano,
 descarga la primera página del catálogo desde PokéAPI. Cada tarjeta abre el
 detalle del Pokémon. También puedes navegar a Favoritos y Trivia. Las pruebas
 de widgets siguen usando `AppDependencies.demo()`, con datos en memoria.
+
+## KAN-13 / PKD-07 — Gestión de conectividad e indicador global
+
+Una barra fija arriba de todas las pantallas (catálogo, favoritos, trivia y
+detalle) informa la disponibilidad del servicio, la actividad de
+sincronización y la vigencia de los datos locales.
+
+| Estado | Cuándo | Indicador |
+|---|---|---|
+| Verificando | Al iniciar, antes de la primera comprobación | «Verificando conexión…» |
+| En línea | PokéAPI respondió una consulta GraphQL | «En línea» |
+| Sincronizando | En línea y hay una descarga en curso | «Sincronizando…» con progreso |
+| Sin conexión | El dispositivo no tiene red o no resuelve el servidor | «Sin conexión» |
+| Servicio no disponible | Hay red, pero la API falla, tarda más de 5 s o devuelve errores | «Servicio no disponible» |
+
+La segunda línea muestra `Datos locales · actualizado HH:mm` a partir de
+`sync_metadata.last_success_at` (IND-04). Cada estado combina icono, texto y
+color, y una etiqueta `Semantics` con región en vivo que TalkBack anuncia
+(IND-05).
+
+**Cómo se decide el estado (IND-02).**
+[`ApiConnectivityService`](lib/core/data/api_connectivity_service.dart) escucha
+los cambios de red de [`connectivity_plus`](https://pub.dev/packages/connectivity_plus)
+y, cuando hay red, envía `query { __typename }` a PokéAPI con límite de 5 s
+([`checkGraphqlService`](lib/core/data/graphql_health_check.dart)). Solo una
+respuesta GraphQL válida produce «En línea». La comprobación se repite cada
+30 s mientras haya red. Para evitar parpadeos (IND-06), perder «En línea»
+exige dos comprobaciones fallidas seguidas (la segunda a los 3 s); recuperarlo
+es inmediato.
+
+**Disponibilidad y sincronización por separado (§7.4).** `ConnectivityStatus`
+y `SyncActivity` son contratos distintos.
+[`SyncActivityTracker`](lib/core/data/sync_activity_tracker.dart) marca
+`syncing` mientras `ObservableCatalogRepository` descarga y guarda. El
+indicador muestra «Sincronizando» solo con el servicio en línea, así que nunca
+aparece «sin conexión y sincronizando».
+
+**Reconexión (PA-07).** Al pasar de «Sin conexión» o «Servicio no disponible»
+a «En línea», `CatalogPage` llama a `refresh()` sin intervención del usuario.
+
+**Pendiente para la entrega final:** reintentos con backoff (RNF-RES-02) y un
+mecanismo documentado para simular la API caída con red activa (PA-08).
+
+```sh
+flutter test test/core test/app test/catalog_page_test.dart
+```
 
 ## KAN-8 / PKD-02 — Base local con Drift
 
