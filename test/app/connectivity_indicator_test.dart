@@ -130,11 +130,11 @@ void main() {
     expect(dataFreshnessLabel(null, now), 'Sin datos guardados');
     expect(
       dataFreshnessLabel(DateTime(2026, 11, 15, 9, 5), now),
-      'Datos locales · actualizado 09:05',
+      'Última actualización: 09:05',
     );
     expect(
       dataFreshnessLabel(DateTime(2026, 11, 14, 22, 30), now),
-      'Datos locales · actualizado 14/11 22:30',
+      'Última actualización: 14/11 22:30',
     );
   });
 }

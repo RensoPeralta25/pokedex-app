@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import '../../../core/data/sync_activity_tracker.dart';
 import '../domain/catalog_repository.dart';
 import '../domain/catalog_snapshot.dart';
+import 'catalog_image_prefetcher.dart';
 import 'local/catalog_local_store.dart';
 import 'remote/poke_api_catalog_source.dart';
 
@@ -10,12 +13,14 @@ final class ObservableCatalogRepository implements CatalogRepository {
     required this.remote,
     required this.local,
     this.activity,
+    this.images,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
   final PokeApiCatalogSource remote;
   final CatalogLocalStore local;
   final SyncActivityTracker? activity;
+  final CatalogImagePrefetcher? images;
   final DateTime Function() _now;
   Future<void> _pending = Future.value();
 
@@ -39,9 +44,17 @@ final class ObservableCatalogRepository implements CatalogRepository {
         nextOffset: page.nextOffset,
         updatedAt: _now().toUtc(),
       );
+      _prefetchImages(page.items.map((p) => p.artworkUrl ?? p.spriteUrl));
     }
 
     return activity?.track(download) ?? download();
+  }
+
+  /// En segundo plano: no bloquea ni hace fallar la sincronización.
+  void _prefetchImages(Iterable<Uri?> urls) {
+    final prefetcher = images;
+    if (prefetcher == null) return;
+    unawaited(prefetcher.prefetch(urls.nonNulls).catchError((Object _) {}));
   }
 
   Future<void> _enqueue(Future<void> Function() operation) {

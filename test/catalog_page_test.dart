@@ -9,6 +9,7 @@ import 'package:dart_final_project/features/catalog/domain/catalog_repository.da
 import 'package:dart_final_project/features/catalog/domain/catalog_snapshot.dart';
 import 'package:dart_final_project/features/catalog/domain/pokemon_summary.dart';
 import 'package:dart_final_project/features/catalog/presentation/catalog_page.dart';
+import 'package:dart_final_project/features/catalog/presentation/pokemon_catalog_card.dart';
 import 'package:dart_final_project/features/favorites/data/demo_favorites_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -234,6 +235,12 @@ void _reconnectionTests() {
     connectivity.set(ConnectivityStatus.online);
     await tester.pumpAndSettle();
     expect(refreshes, 3);
+    expect(
+      tester
+          .widget<PokemonCatalogCard>(find.byType(PokemonCatalogCard))
+          .imageGeneration,
+      2,
+    );
   });
 }
 

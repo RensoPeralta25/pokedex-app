@@ -28,6 +28,7 @@ class _CatalogPageState extends State<CatalogPage> {
   bool _nextPageFailed = false;
   bool _refreshFailed = false;
   int _repositoryVersion = 0;
+  int _imageGeneration = 0;
 
   @override
   void initState() {
@@ -53,7 +54,10 @@ class _CatalogPageState extends State<CatalogPage> {
           (previous == ConnectivityStatus.offline ||
               previous == ConnectivityStatus.serviceUnavailable);
       previous = status;
-      if (reconnected && mounted) _refresh();
+      if (reconnected && mounted) {
+        setState(() => _imageGeneration++);
+        _refresh();
+      }
     });
   }
 
@@ -207,6 +211,7 @@ class _CatalogPageState extends State<CatalogPage> {
                     key: ValueKey(pokemon.id),
                     pokemon: pokemon,
                     onTap: () => _openDetail(pokemon),
+                    imageGeneration: _imageGeneration,
                   );
                 },
               );
